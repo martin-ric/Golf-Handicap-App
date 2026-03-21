@@ -378,6 +378,7 @@
   #nine-hole-hcpi-row {
     display: flex;
     flex-direction: column;
+    gap: 1.25rem;
   }
 
   /* 9H badge shown in round cards */
