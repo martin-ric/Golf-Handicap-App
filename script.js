@@ -241,6 +241,196 @@ if ('serviceWorker' in navigator) {
   };
 
   // ============================================================================
+  // COURSE SERVICE (autocomplete + user course book)
+  // ============================================================================
+
+  var CourseService = {
+    STORAGE_KEY: "golf-course-book",
+    _seedCourses: [],
+
+    /**
+     * Fetch and cache the bundled courses.json seed file.
+     * Called once at startup; _seedCourses is populated asynchronously.
+     */
+    loadSeedData: function () {
+      var self = this;
+      return fetch("./courses.json")
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (data) {
+          self._seedCourses = Array.isArray(data) ? data : [];
+        })
+        .catch(function () {
+          self._seedCourses = [];
+        });
+    },
+
+    /**
+     * Load user's personal course book from localStorage.
+     * @returns {Array<{name: string, cr: number, slope: number}>}
+     */
+    loadCourseBook: function () {
+      try {
+        var raw = localStorage.getItem(this.STORAGE_KEY);
+        if (!raw) return [];
+        var parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    },
+
+    /**
+     * Persist the user's course book to localStorage.
+     * @param {Array} courses
+     */
+    saveCourseBook: function (courses) {
+      try {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(courses));
+      } catch (e) {
+        console.warn("Could not save course book:", e);
+      }
+    },
+
+    /**
+     * Silently add or update a course in the user's personal course book.
+     * Called automatically when a round with name + CR + slope is saved.
+     * @param {string} name - Course name
+     * @param {number} cr - Course rating
+     * @param {number} slope - Slope rating
+     */
+    saveUserCourse: function (name, cr, slope) {
+      if (!name || cr === null || cr === undefined || slope === null || slope === undefined) return;
+      var book = this.loadCourseBook();
+      var key = name.toLowerCase();
+      var found = false;
+      for (var i = 0; i < book.length; i++) {
+        if (book[i].name.toLowerCase() === key) {
+          book[i] = { name: name, cr: cr, slope: slope };
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        book.push({ name: name, cr: cr, slope: slope });
+      }
+      this.saveCourseBook(book);
+    },
+
+    /**
+     * Search both the user's course book and the seed data for courses matching
+     * the query string. User book entries take priority; seed entries fill the rest.
+     * @param {string} query
+     * @returns {Array<{name: string, cr: number, slope: number}>} Up to 8 results
+     */
+    search: function (query) {
+      if (!query || query.trim().length < 1) return [];
+      var q = query.trim().toLowerCase();
+      var results = [];
+      var seen = {};
+
+      // User course book has priority
+      var book = this.loadCourseBook();
+      for (var i = 0; i < book.length; i++) {
+        if (book[i].name.toLowerCase().indexOf(q) !== -1) {
+          results.push({ name: book[i].name, cr: book[i].cr, slope: book[i].slope });
+          seen[book[i].name.toLowerCase()] = true;
+        }
+      }
+
+      // Seed courses as fallback
+      for (var j = 0; j < this._seedCourses.length; j++) {
+        var c = this._seedCourses[j];
+        if (c.name.toLowerCase().indexOf(q) !== -1 && !seen[c.name.toLowerCase()]) {
+          results.push({ name: c.name, cr: c.cr, slope: c.slope });
+        }
+      }
+
+      return results.slice(0, 8);
+    },
+
+    /**
+     * Attach autocomplete behaviour to a course name input.
+     * When a suggestion is selected, fills nameInput, crInput, and slopeInput.
+     * The dropdown is appended to nameInput's parentNode (which must have
+     * position: relative set via CSS).
+     *
+     * @param {HTMLInputElement} nameInput
+     * @param {HTMLInputElement} crInput
+     * @param {HTMLInputElement} slopeInput
+     */
+    attachAutocomplete: function (nameInput, crInput, slopeInput) {
+      if (!nameInput) return;
+      var self = this;
+
+      var dropdown = document.createElement("ul");
+      dropdown.className = "course-suggestions";
+      dropdown.setAttribute("role", "listbox");
+      dropdown.setAttribute("aria-label", "Course suggestions");
+      dropdown.style.display = "none";
+      nameInput.parentNode.appendChild(dropdown);
+
+      function renderSuggestions(results) {
+        dropdown.textContent = "";
+        if (results.length === 0) {
+          dropdown.style.display = "none";
+          return;
+        }
+        results.forEach(function (course) {
+          var li = document.createElement("li");
+          li.className = "course-suggestion-item";
+          li.setAttribute("role", "option");
+          li.setAttribute("tabindex", "-1");
+
+          var nameEl = document.createElement("span");
+          nameEl.className = "course-suggestion-name";
+          nameEl.textContent = course.name;
+
+          var detailEl = document.createElement("span");
+          detailEl.className = "course-suggestion-detail";
+          detailEl.textContent = "CR\u00a0" + course.cr + "\u00b7 Slope\u00a0" + course.slope;
+
+          li.appendChild(nameEl);
+          li.appendChild(detailEl);
+
+          li.addEventListener("mousedown", function (e) {
+            // Prevent the input from losing focus before we fill values
+            e.preventDefault();
+            nameInput.value = course.name;
+            if (crInput) crInput.value = course.cr;
+            if (slopeInput) slopeInput.value = course.slope;
+            dropdown.style.display = "none";
+            nameInput.focus();
+          });
+
+          dropdown.appendChild(li);
+        });
+        dropdown.style.display = "";
+      }
+
+      nameInput.addEventListener("input", function () {
+        renderSuggestions(self.search(nameInput.value));
+      });
+
+      nameInput.addEventListener("focus", function () {
+        if (nameInput.value.trim()) {
+          renderSuggestions(self.search(nameInput.value));
+        }
+      });
+
+      nameInput.addEventListener("blur", function () {
+        // Short delay so mousedown on a list item fires before blur hides it
+        setTimeout(function () { dropdown.style.display = "none"; }, 160);
+      });
+
+      nameInput.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+          dropdown.style.display = "none";
+        }
+      });
+    }
+  };
+
+  // ============================================================================
   // WHS SERVICE (World Handicap System calculations)
   // ============================================================================
 
@@ -514,6 +704,16 @@ if ('serviceWorker' in navigator) {
       this.elements.addRoundButton.addEventListener("click", this.showAddRoundCard.bind(this));
 
       UIService.setToday(this.elements.roundDateInput);
+
+      // Load seed courses in the background; autocomplete works immediately
+      // for user book entries and picks up seed data as soon as it loads.
+      CourseService.loadSeedData();
+      CourseService.attachAutocomplete(
+        this.elements.courseNameInput,
+        this.elements.courseRatingInput,
+        this.elements.slopeInput
+      );
+
       this.updateUI();
     },
 
@@ -604,6 +804,11 @@ if ('serviceWorker' in navigator) {
       if (!saveResult.success) {
         UIService.showError(this.elements.resultContainer, saveResult.error);
         return;
+      }
+
+      // Silently save the course to the user's course book for future autocomplete
+      if (courseNameRaw && courseRatingValidation.value !== null && slopeValidation.value !== null) {
+        CourseService.saveUserCourse(courseNameRaw, courseRatingValidation.value, slopeValidation.value);
       }
 
       this.updateUI();
@@ -758,6 +963,14 @@ if ('serviceWorker' in navigator) {
 
       // Insert at bottom of rounds list (above the Add button)
       this.elements.roundsList.appendChild(card);
+
+      // Attach autocomplete to the course name field in the editable card
+      CourseService.attachAutocomplete(
+        document.getElementById("add-course-name"),
+        document.getElementById("add-cr"),
+        document.getElementById("add-slope")
+      );
+
       document.getElementById("add-differential").focus();
 
       cancelBtn.addEventListener("click", function () {
@@ -847,6 +1060,11 @@ if ('serviceWorker' in navigator) {
         errorEl.textContent = saveResult.error;
         errorEl.style.display = "";
         return;
+      }
+
+      // Silently save the course to the user's course book for future autocomplete
+      if (courseName && courseRating !== null && slope !== null) {
+        CourseService.saveUserCourse(courseName, courseRating, slope);
       }
 
       card.remove();

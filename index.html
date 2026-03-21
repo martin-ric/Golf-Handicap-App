@@ -39,7 +39,9 @@
       <input type="number" id="slope-rating" name="slope-rating" min="55" max="155" placeholder="e.g. 128" required aria-describedby="result">
 
       <label for="course-name">Course Name <span class="optional">(optional)</span></label>
-      <input type="text" id="course-name" name="course-name" maxlength="80" placeholder="e.g. Augusta National">
+      <div class="course-name-wrapper">
+        <input type="text" id="course-name" name="course-name" maxlength="80" placeholder="e.g. Augusta National" autocomplete="off">
+      </div>
 
       <div class="nine-hole-row">
         <input type="checkbox" id="nine-hole" name="nine-hole">

@@ -395,6 +395,59 @@
     vertical-align: middle;
   }
 
+  /* Course name autocomplete wrapper (main form) */
+  .course-name-wrapper {
+    position: relative;
+  }
+
+  /* The editable card row also needs position:relative for its dropdown */
+  .round-card-editable-row {
+    position: relative;
+  }
+
+  /* Autocomplete suggestion dropdown */
+  .course-suggestions {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #ffffff;
+    border: 1px solid rgba(10, 31, 22, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(10, 31, 22, 0.12);
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0;
+    overflow: hidden;
+  }
+
+  .course-suggestion-item {
+    display: flex;
+    flex-direction: column;
+    padding: 0.6rem 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .course-suggestion-item:hover,
+  .course-suggestion-item:focus {
+    background: rgba(10, 31, 22, 0.05);
+    outline: none;
+  }
+
+  .course-suggestion-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #0a1f16;
+  }
+
+  .course-suggestion-detail {
+    font-size: 0.75rem;
+    color: rgba(10, 31, 22, 0.5);
+    margin-top: 0.15rem;
+  }
+
   /* Rounds footer (Add button below list) */
   .rounds-footer {
     margin-top: 0.75rem;

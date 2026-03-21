@@ -1,8 +1,9 @@
-const CACHE_NAME = 'golf-handicap-v2';
+const CACHE_NAME = 'golf-handicap-v3';
 const ASSETS = [
   'index.html',
   'style.css',
-  'script.js'
+  'script.js',
+  'courses.json'
 ];
 
 // Install the Service Worker and cache the essential files
