@@ -323,15 +323,14 @@ if ('serviceWorker' in navigator) {
      * @returns {Array<{name: string, cr: number, slope: number}>} Up to 8 results
      */
     search: function (query) {
-      if (!query || query.trim().length < 1) return [];
-      var q = query.trim().toLowerCase();
+      var q = (query || "").trim().toLowerCase();
       var results = [];
       var seen = {};
 
       // User course book has priority
       var book = this.loadCourseBook();
       for (var i = 0; i < book.length; i++) {
-        if (book[i].name.toLowerCase().indexOf(q) !== -1) {
+        if (!q || book[i].name.toLowerCase().indexOf(q) !== -1) {
           results.push({ name: book[i].name, cr: book[i].cr, slope: book[i].slope });
           seen[book[i].name.toLowerCase()] = true;
         }
@@ -340,7 +339,7 @@ if ('serviceWorker' in navigator) {
       // Seed courses as fallback
       for (var j = 0; j < this._seedCourses.length; j++) {
         var c = this._seedCourses[j];
-        if (c.name.toLowerCase().indexOf(q) !== -1 && !seen[c.name.toLowerCase()]) {
+        if ((!q || c.name.toLowerCase().indexOf(q) !== -1) && !seen[c.name.toLowerCase()]) {
           results.push({ name: c.name, cr: c.cr, slope: c.slope });
         }
       }
@@ -412,9 +411,7 @@ if ('serviceWorker' in navigator) {
       });
 
       nameInput.addEventListener("focus", function () {
-        if (nameInput.value.trim()) {
-          renderSuggestions(self.search(nameInput.value));
-        }
+        renderSuggestions(self.search(nameInput.value));
       });
 
       nameInput.addEventListener("blur", function () {
@@ -911,6 +908,10 @@ if ('serviceWorker' in navigator) {
         String(today.getMonth() + 1).padStart(2, "0") + "-" +
         String(today.getDate()).padStart(2, "0");
 
+      // Course name (optional) – shown first so autocomplete can pre-fill CR/Slope
+      var courseNameRow = makeRow("Course Name (optional)", "add-course-name", "text", "e.g. Augusta National");
+      courseNameRow.querySelector("input").setAttribute("autocomplete", "off");
+
       // Score differential (required)
       var diffRow = makeRow("Score Differential", "add-differential", "number", "e.g. 12.3", 0.1);
 
@@ -918,7 +919,6 @@ if ('serviceWorker' in navigator) {
       var scoreRow = makeRow("Gross Score (optional)", "add-score", "number", "e.g. 85");
       var crRow = makeRow("Course Rating (optional)", "add-cr", "number", "e.g. 72.5", 0.1);
       var slopeRow = makeRow("Slope Rating (optional)", "add-slope", "number", "e.g. 128");
-      var courseNameRow = makeRow("Course Name (optional)", "add-course-name", "text", "e.g. Augusta National");
 
       // 9-hole checkbox
       var nineHoleRow = document.createElement("div");
@@ -952,11 +952,11 @@ if ('serviceWorker' in navigator) {
       actionsDiv.appendChild(cancelBtn);
 
       card.appendChild(dateRow);
+      card.appendChild(courseNameRow);
       card.appendChild(diffRow);
       card.appendChild(scoreRow);
       card.appendChild(crRow);
       card.appendChild(slopeRow);
-      card.appendChild(courseNameRow);
       card.appendChild(nineHoleRow);
       card.appendChild(errorEl);
       card.appendChild(actionsDiv);
