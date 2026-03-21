@@ -255,25 +255,30 @@ if ('serviceWorker' in navigator) {
     loadSeedData: function () {
       var self = this;
       return fetch("./courses.json")
-        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (r) {
+          console.log("[CourseService] courses.json response:", r.status, r.url);
+          return r.ok ? r.json() : [];
+        })
         .then(function (data) {
           if (!Array.isArray(data)) { self._seedCourses = []; return; }
-          // Map from source format to {name, cr, slope}; skip entries without ratings
+          // Support both new nested format {yellow_tee_men: {course_rating, slope}}
+          // and old flat format {cr, slope} for backwards compatibility with cached versions
           self._seedCourses = data
             .filter(function (c) {
-              return c.yellow_tee_men &&
+              return (c.yellow_tee_men &&
                 c.yellow_tee_men.course_rating !== null &&
-                c.yellow_tee_men.slope !== null;
+                c.yellow_tee_men.slope !== null) ||
+                (c.cr != null && c.slope != null);
             })
             .map(function (c) {
-              return {
-                name: c.name,
-                cr: c.yellow_tee_men.course_rating,
-                slope: c.yellow_tee_men.slope
-              };
+              return c.yellow_tee_men
+                ? { name: c.name, cr: c.yellow_tee_men.course_rating, slope: c.yellow_tee_men.slope }
+                : { name: c.name, cr: c.cr, slope: c.slope };
             });
+          console.log("[CourseService] seed courses loaded:", self._seedCourses.length);
         })
-        .catch(function () {
+        .catch(function (err) {
+          console.error("[CourseService] Failed to load courses.json:", err);
           self._seedCourses = [];
         });
     },
