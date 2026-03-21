@@ -347,7 +347,54 @@
      border: 1px dashed rgba(10, 31, 22, 0.12);
    }
    
-   /* Responsive */
+   /* Optional label helper */
+  .optional {
+    font-weight: 400;
+    color: rgba(10, 31, 22, 0.45);
+  }
+
+  /* 9-hole checkbox row */
+  .nine-hole-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: -0.25rem;
+  }
+
+  .nine-hole-row input[type="checkbox"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    accent-color: #0a1f16;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .nine-hole-row label {
+    margin-bottom: 0;
+    cursor: pointer;
+  }
+
+  /* HCPI input row for 9-hole rounds (shown/hidden via JS) */
+  #nine-hole-hcpi-row {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 9H badge shown in round cards */
+  .round-card-badge {
+    display: inline-block;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: rgba(10, 31, 22, 0.65);
+    background: rgba(10, 31, 22, 0.08);
+    border-radius: 4px;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+  }
+
+  /* Responsive */
    @media (max-width: 480px) {
      body {
        align-items: flex-start;

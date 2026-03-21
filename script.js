@@ -62,9 +62,10 @@ if ('serviceWorker' in navigator) {
     /**
      * Validates gross score input.
      * @param {string|number} score - Score value
+     * @param {boolean} [isNineHole] - Whether this is a 9-hole round
      * @returns {{valid: boolean, error: string|null, value: number|null}}
      */
-    validateScore: function (score) {
+    validateScore: function (score, isNineHole) {
       if (score === "" || score === null || score === undefined) {
         return { valid: false, error: "Please enter a gross score.", value: null };
       }
@@ -72,8 +73,9 @@ if ('serviceWorker' in navigator) {
       if (isNaN(num) || !isFinite(num)) {
         return { valid: false, error: "Gross score must be a valid number.", value: null };
       }
-      if (num < 1 || num > 200) {
-        return { valid: false, error: "Gross score must be between 1 and 200.", value: null };
+      var maxScore = isNineHole ? 120 : 200;
+      if (num < 1 || num > maxScore) {
+        return { valid: false, error: "Gross score must be between 1 and " + maxScore + ".", value: null };
       }
       if (num !== Math.floor(num)) {
         return { valid: false, error: "Gross score must be a whole number.", value: null };
@@ -84,9 +86,10 @@ if ('serviceWorker' in navigator) {
     /**
      * Validates course rating input.
      * @param {string|number} courseRating - Course rating value
+     * @param {boolean} [isNineHole] - Whether this is a 9-hole round
      * @returns {{valid: boolean, error: string|null, value: number|null}}
      */
-    validateCourseRating: function (courseRating) {
+    validateCourseRating: function (courseRating, isNineHole) {
       if (courseRating === "" || courseRating === null || courseRating === undefined) {
         return { valid: false, error: "Please enter a course rating.", value: null };
       }
@@ -94,8 +97,10 @@ if ('serviceWorker' in navigator) {
       if (isNaN(num) || !isFinite(num)) {
         return { valid: false, error: "Course rating must be a valid number.", value: null };
       }
-      if (num < 50 || num > 80) {
-        return { valid: false, error: "Course rating must be between 50 and 80.", value: null };
+      var minCR = isNineHole ? 20 : 50;
+      var maxCR = isNineHole ? 45 : 80;
+      if (num < minCR || num > maxCR) {
+        return { valid: false, error: "Course rating must be between " + minCR + " and " + maxCR + ".", value: null };
       }
       return { valid: true, error: null, value: num };
     },
@@ -118,6 +123,25 @@ if ('serviceWorker' in navigator) {
       }
       if (num !== Math.floor(num)) {
         return { valid: false, error: "Slope rating must be a whole number.", value: null };
+      }
+      return { valid: true, error: null, value: num };
+    },
+
+    /**
+     * Validates Handicap Index input (used for 9-hole rounds).
+     * @param {string|number} hcpi - Handicap Index value
+     * @returns {{valid: boolean, error: string|null, value: number|null}}
+     */
+    validateHcpi: function (hcpi) {
+      if (hcpi === "" || hcpi === null || hcpi === undefined) {
+        return { valid: false, error: "Please enter your Handicap Index to calculate the 9-hole differential.", value: null };
+      }
+      var num = typeof hcpi === "string" ? parseFloat(hcpi) : Number(hcpi);
+      if (isNaN(num) || !isFinite(num)) {
+        return { valid: false, error: "Handicap Index must be a valid number.", value: null };
+      }
+      if (num < -6.0 || num > 54.0) {
+        return { valid: false, error: "Handicap Index must be between -6.0 and 54.0.", value: null };
       }
       return { valid: true, error: null, value: num };
     },
@@ -220,6 +244,17 @@ if ('serviceWorker' in navigator) {
   // ============================================================================
 
   var WHSService = {
+    /**
+     * Calculate expected 9-hole SD supplement using official WHS formula.
+     * Formula: ((HCPI * 1.04) + 2.4) / 2
+     * Represents the statistically expected score on the 9 holes not played.
+     * @param {number} hcpi - Current Handicap Index
+     * @returns {number} Expected 9-hole score differential
+     */
+    calculateExpectedNineHoleSD: function (hcpi) {
+      return ((hcpi * 1.04) + 2.4) / 2;
+    },
+
     /**
      * Calculate score differential using WHS formula.
      * Formula: (113 / Slope) * (Score - Course Rating)
@@ -429,6 +464,9 @@ if ('serviceWorker' in navigator) {
       grossScoreInput: null,
       courseRatingInput: null,
       slopeInput: null,
+      courseNameInput: null,
+      nineHoleInput: null,
+      hcpiInput: null,
       resultContainer: null,
       handicapValue: null,
       handicapHint: null,
@@ -446,6 +484,9 @@ if ('serviceWorker' in navigator) {
       this.elements.grossScoreInput = document.getElementById("gross-score");
       this.elements.courseRatingInput = document.getElementById("course-rating");
       this.elements.slopeInput = document.getElementById("slope-rating");
+      this.elements.courseNameInput = document.getElementById("course-name");
+      this.elements.nineHoleInput = document.getElementById("nine-hole");
+      this.elements.hcpiInput = document.getElementById("hcpi-input");
       this.elements.resultContainer = document.getElementById("result");
       this.elements.handicapValue = document.getElementById("handicap-value");
       this.elements.handicapHint = document.getElementById("handicap-hint");
@@ -466,6 +507,7 @@ if ('serviceWorker' in navigator) {
 
       this.elements.form.addEventListener("submit", this.handleSubmit.bind(this));
       this.elements.deleteAllButton.addEventListener("click", this.handleDeleteAll.bind(this));
+      this.elements.nineHoleInput.addEventListener("change", this.handleNineHoleToggle.bind(this));
 
       UIService.setToday(this.elements.roundDateInput);
       this.updateUI();
@@ -483,6 +525,8 @@ if ('serviceWorker' in navigator) {
       var scoreRaw = this.elements.grossScoreInput.value;
       var courseRatingRaw = this.elements.courseRatingInput.value;
       var slopeRaw = this.elements.slopeInput.value;
+      var courseNameRaw = this.elements.courseNameInput.value.trim().slice(0, 80);
+      var isNineHole = this.elements.nineHoleInput.checked;
 
       var dateValidation = ValidationService.validateDate(dateRaw);
       if (!dateValidation.valid) {
@@ -493,7 +537,7 @@ if ('serviceWorker' in navigator) {
       }
       this.elements.roundDateInput.removeAttribute("aria-invalid");
 
-      var scoreValidation = ValidationService.validateScore(scoreRaw);
+      var scoreValidation = ValidationService.validateScore(scoreRaw, isNineHole);
       if (!scoreValidation.valid) {
         UIService.showError(this.elements.resultContainer, scoreValidation.error);
         this.elements.grossScoreInput.setAttribute("aria-invalid", "true");
@@ -502,7 +546,7 @@ if ('serviceWorker' in navigator) {
       }
       this.elements.grossScoreInput.removeAttribute("aria-invalid");
 
-      var courseRatingValidation = ValidationService.validateCourseRating(courseRatingRaw);
+      var courseRatingValidation = ValidationService.validateCourseRating(courseRatingRaw, isNineHole);
       if (!courseRatingValidation.valid) {
         UIService.showError(this.elements.resultContainer, courseRatingValidation.error);
         this.elements.courseRatingInput.setAttribute("aria-invalid", "true");
@@ -525,6 +569,19 @@ if ('serviceWorker' in navigator) {
         courseRatingValidation.value,
         slopeValidation.value
       );
+      // For 9-hole rounds, combine with expected SD using official WHS formula
+      if (isNineHole) {
+        var hcpiValidation = ValidationService.validateHcpi(this.elements.hcpiInput.value);
+        if (!hcpiValidation.valid) {
+          UIService.showError(this.elements.resultContainer, hcpiValidation.error);
+          this.elements.hcpiInput.setAttribute("aria-invalid", "true");
+          this.elements.hcpiInput.focus();
+          return;
+        }
+        this.elements.hcpiInput.removeAttribute("aria-invalid");
+        var expectedSD = WHSService.calculateExpectedNineHoleSD(hcpiValidation.value);
+        scoreDifferential = Math.round((scoreDifferential + expectedSD) * 10) / 10;
+      }
       UIService.showResult(this.elements.resultContainer, scoreDifferential);
 
       var rounds = StorageService.loadRounds();
@@ -534,7 +591,9 @@ if ('serviceWorker' in navigator) {
         score: scoreValidation.value,
         courseRating: courseRatingValidation.value,
         slope: slopeValidation.value,
-        differential: scoreDifferential
+        differential: scoreDifferential,
+        courseName: courseNameRaw || null,
+        isNineHole: isNineHole
       };
       rounds.unshift(newRound);
       var saveResult = StorageService.saveRounds(rounds);
@@ -560,6 +619,31 @@ if ('serviceWorker' in navigator) {
       }
       UIService.clearResult(this.elements.resultContainer);
       this.updateUI();
+    },
+
+    /**
+     * Show/hide and pre-fill the HCPI field when the 9-hole checkbox changes.
+     */
+    handleNineHoleToggle: function () {
+      var hcpiRow = document.getElementById("nine-hole-hcpi-row");
+      if (this.elements.nineHoleInput.checked) {
+        hcpiRow.style.display = "";
+        // Pre-fill with current handicap index if available
+        if (!this.elements.hcpiInput.value) {
+          var rounds = StorageService.loadRounds();
+          var newestFirst = rounds.slice().sort(function (a, b) {
+            return b.date.localeCompare(a.date);
+          });
+          var info = WHSService.getHandicapInfo(newestFirst);
+          if (info.handicap !== null) {
+            this.elements.hcpiInput.value = String(info.handicap);
+          }
+        }
+      } else {
+        hcpiRow.style.display = "none";
+        this.elements.hcpiInput.value = "";
+        this.elements.hcpiInput.removeAttribute("aria-invalid");
+      }
     },
 
     /**
@@ -619,6 +703,12 @@ if ('serviceWorker' in navigator) {
         var dateSpan = document.createElement("span");
         dateSpan.className = "round-card-date";
         dateSpan.textContent = UIService.formatDate(round.date);
+        if (round.isNineHole) {
+          var badge = document.createElement("span");
+          badge.className = "round-card-badge";
+          badge.textContent = "9H";
+          dateSpan.appendChild(badge);
+        }
 
         var differentialSpan = document.createElement("span");
         differentialSpan.className = "round-card-differential";
@@ -636,7 +726,11 @@ if ('serviceWorker' in navigator) {
 
         var details = document.createElement("div");
         details.className = "round-card-details";
-        details.textContent = "Score " + String(round.score) + " · CR " + String(round.courseRating) + " · Slope " + String(round.slope);
+        var detailsText = "Score " + String(round.score) + " · CR " + String(round.courseRating) + " · Slope " + String(round.slope);
+        if (round.courseName) {
+          detailsText = round.courseName + " · " + detailsText;
+        }
+        details.textContent = detailsText;
 
         card.appendChild(dateSpan);
         card.appendChild(differentialSpan);

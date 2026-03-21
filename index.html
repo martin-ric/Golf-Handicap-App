@@ -38,6 +38,19 @@
       <label for="slope-rating">Slope Rating</label>
       <input type="number" id="slope-rating" name="slope-rating" min="55" max="155" placeholder="e.g. 128" required aria-describedby="result">
 
+      <label for="course-name">Course Name <span class="optional">(optional)</span></label>
+      <input type="text" id="course-name" name="course-name" maxlength="80" placeholder="e.g. Augusta National">
+
+      <div class="nine-hole-row">
+        <input type="checkbox" id="nine-hole" name="nine-hole">
+        <label for="nine-hole">9-hole round</label>
+      </div>
+
+      <div id="nine-hole-hcpi-row" style="display:none">
+        <label for="hcpi-input">Handicap Index <span class="optional">(for 9-hole calculation)</span></label>
+        <input type="number" id="hcpi-input" name="hcpi-input" step="0.1" min="-6.0" max="54.0" placeholder="e.g. 18.0" aria-describedby="result">
+      </div>
+
       <button type="submit" id="calculate-btn">Calculate &amp; Save</button>
     </form>
 
