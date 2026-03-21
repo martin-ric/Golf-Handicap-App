@@ -756,8 +756,8 @@ if ('serviceWorker' in navigator) {
       card.appendChild(errorEl);
       card.appendChild(actionsDiv);
 
-      // Insert at top of rounds list
-      this.elements.roundsList.insertBefore(card, this.elements.roundsList.firstChild);
+      // Insert at bottom of rounds list (above the Add button)
+      this.elements.roundsList.appendChild(card);
       document.getElementById("add-differential").focus();
 
       cancelBtn.addEventListener("click", function () {
