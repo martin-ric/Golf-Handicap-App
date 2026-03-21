@@ -716,9 +716,13 @@ if ('serviceWorker' in navigator) {
 
       UIService.setToday(this.elements.roundDateInput);
 
-      // Load seed courses in the background; autocomplete works immediately
-      // for user book entries and picks up seed data as soon as it loads.
-      CourseService.loadSeedData();
+      // Load seed courses; re-trigger suggestions if field is already focused
+      var courseNameInput = this.elements.courseNameInput;
+      CourseService.loadSeedData().then(function () {
+        if (courseNameInput && document.activeElement === courseNameInput) {
+          courseNameInput.dispatchEvent(new Event("input"));
+        }
+      });
       CourseService.attachAutocomplete(
         this.elements.courseNameInput,
         this.elements.courseRatingInput,

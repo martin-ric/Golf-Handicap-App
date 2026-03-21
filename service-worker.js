@@ -1,4 +1,4 @@
-const CACHE_NAME = 'golf-handicap-v5';
+const CACHE_NAME = 'golf-handicap-v6';
 const ASSETS = [
   'index.html',
   'style.css',
@@ -16,9 +16,18 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate the Service Worker
+// Activate: delete old caches and take control of all open tabs immediately
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker activated');
+  event.waitUntil(
+    caches.keys()
+      .then(function (keys) {
+        return Promise.all(
+          keys.filter(function (key) { return key !== CACHE_NAME; })
+              .map(function (key) { return caches.delete(key); })
+        );
+      })
+      .then(function () { return self.clients.claim(); })
+  );
 });
 
 // Fetching files: Try network first, fall back to cache if offline
