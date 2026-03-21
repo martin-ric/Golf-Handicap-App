@@ -257,7 +257,21 @@ if ('serviceWorker' in navigator) {
       return fetch("./courses.json")
         .then(function (r) { return r.ok ? r.json() : []; })
         .then(function (data) {
-          self._seedCourses = Array.isArray(data) ? data : [];
+          if (!Array.isArray(data)) { self._seedCourses = []; return; }
+          // Map from source format to {name, cr, slope}; skip entries without ratings
+          self._seedCourses = data
+            .filter(function (c) {
+              return c.yellow_tee_men &&
+                c.yellow_tee_men.course_rating !== null &&
+                c.yellow_tee_men.slope !== null;
+            })
+            .map(function (c) {
+              return {
+                name: c.name,
+                cr: c.yellow_tee_men.course_rating,
+                slope: c.yellow_tee_men.slope
+              };
+            });
         })
         .catch(function () {
           self._seedCourses = [];

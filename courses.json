@@ -1,17 +1,536 @@
 [
-  { "name": "GC München Eichenried – Weiß (18H)", "cr": 73.4, "slope": 138 },
-  { "name": "GC München Eichenried – Gelb (18H)", "cr": 70.7, "slope": 129 },
-  { "name": "GC St. Leon-Rot – Blau (18H)", "cr": 73.8, "slope": 137 },
-  { "name": "GC St. Leon-Rot – Weiß (18H)", "cr": 71.6, "slope": 128 },
-  { "name": "GC Hubbelrath – Weiß (18H)", "cr": 72.6, "slope": 133 },
-  { "name": "GC Gut Kaden – Weiß (18H)", "cr": 72.5, "slope": 131 },
-  { "name": "GC Beuerberg – Weiß (18H)", "cr": 70.4, "slope": 125 },
-  { "name": "GC Starnberg – Weiß (18H)", "cr": 71.1, "slope": 126 },
-  { "name": "GC Feldafing – Weiß (18H)", "cr": 71.7, "slope": 127 },
-  { "name": "GC Hamburger Land- und Golf-Club Falkenstein – Weiß (18H)", "cr": 73.5, "slope": 137 },
-  { "name": "GC Club zur Vahr Bremen – Weiß (18H)", "cr": 74.0, "slope": 140 },
-  { "name": "GC Düsseldorfer GC – Weiß (18H)", "cr": 72.0, "slope": 132 },
-  { "name": "GC Frankfurt – Weiß (18H)", "cr": 72.3, "slope": 133 },
-  { "name": "GC Augsburg – Weiß (18H)", "cr": 71.5, "slope": 126 },
-  { "name": "GC Gut Ludwigsberg – Weiß (18H)", "cr": 72.8, "slope": 131 }
+  {
+    "id": 1,
+    "name": "Hamburger Golf-Club e.V. Falkenstein",
+    "address": "In den Bargen 59, 22587 Hamburg",
+    "website": "https://www.golfclub-falkenstein.de",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.4,
+      "slope": 135
+    }
+  },
+  {
+    "id": 2,
+    "name": "Golf-Club Hamburg Wendlohe e.V. – Platz A/B",
+    "address": "Oldesloer Str. 251, 22457 Hamburg",
+    "website": "https://www.wendlohe.de",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.2,
+      "slope": 134
+    }
+  },
+  {
+    "id": 3,
+    "name": "Golf-Club Hamburg Wendlohe e.V. – Platz A/C",
+    "address": "Oldesloer Str. 251, 22457 Hamburg",
+    "website": "https://www.wendlohe.de",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.2,
+      "slope": 134
+    }
+  },
+  {
+    "id": 4,
+    "name": "Golf-Club Hamburg Wendlohe e.V. – Platz C/B",
+    "address": "Oldesloer Str. 251, 22457 Hamburg",
+    "website": "https://www.wendlohe.de",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.2,
+      "slope": 134
+    }
+  },
+  {
+    "id": 5,
+    "name": "Golf & Country Club Hamburg-Treudelberg – Platz A/B",
+    "address": "Lemsahler Landstr. 45, 22397 Hamburg",
+    "website": "https://www.treudelberg.com",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.2,
+      "slope": 120
+    }
+  },
+  {
+    "id": 6,
+    "name": "Golf & Country Club Hamburg-Treudelberg – Platz A/C",
+    "address": "Lemsahler Landstr. 45, 22397 Hamburg",
+    "website": "https://www.treudelberg.com",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.2,
+      "slope": 120
+    }
+  },
+  {
+    "id": 7,
+    "name": "Golf & Country Club Hamburg-Treudelberg – Platz B/C",
+    "address": "Lemsahler Landstr. 45, 22397 Hamburg",
+    "website": "https://www.treudelberg.com",
+    "region": "Hamburg",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.2,
+      "slope": 120
+    }
+  },
+  {
+    "id": 8,
+    "name": "Großflottbeker Tennis-, Hockey- und Golf-Club e.V.",
+    "address": "Hagenbeckstr. 108, 22527 Hamburg",
+    "website": "https://www.tgbc.de",
+    "region": "Hamburg",
+    "holes": 9,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 9,
+    "name": "Golfclub Hamburg-Holm e.V. – Platz A/B",
+    "address": "Haverkamp 1, 25488 Holm",
+    "website": "https://www.gchh.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.0,
+      "slope": 126
+    }
+  },
+  {
+    "id": 10,
+    "name": "Golfclub Hamburg-Holm e.V. – Platz B/C",
+    "address": "Haverkamp 1, 25488 Holm",
+    "website": "https://www.gchh.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 11,
+    "name": "Gut Kaden Golf und Land Club – Platz A/B",
+    "address": "Kadener Str. 9, 25486 Alveslohe",
+    "website": "https://www.gutkaden.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.1,
+      "slope": 130
+    }
+  },
+  {
+    "id": 12,
+    "name": "Gut Kaden Golf und Land Club – Platz A/C",
+    "address": "Kadener Str. 9, 25486 Alveslohe",
+    "website": "https://www.gutkaden.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 13,
+    "name": "Golf-Club An der Pinnau e.V. – Platz A/B",
+    "address": "Pinneberger Str. 81a, 25451 Quickborn",
+    "website": "https://www.pinnau.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.9,
+      "slope": 134
+    }
+  },
+  {
+    "id": 14,
+    "name": "Golf-Club An der Pinnau e.V. – Platz A/C",
+    "address": "Pinneberger Str. 81a, 25451 Quickborn",
+    "website": "https://www.pinnau.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.4,
+      "slope": 131
+    }
+  },
+  {
+    "id": 15,
+    "name": "Golf-Club An der Pinnau e.V. – Platz B/C",
+    "address": "Pinneberger Str. 81a, 25451 Quickborn",
+    "website": "https://www.pinnau.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.1,
+      "slope": 128
+    }
+  },
+  {
+    "id": 16,
+    "name": "Golf-Club An der Pinnau e.V. – Kurs A (9 Loch)",
+    "address": "Pinneberger Str. 81a, 25451 Quickborn",
+    "website": "https://www.pinnau.de",
+    "region": "Schleswig-Holstein",
+    "holes": 9,
+    "yellow_tee_men": {
+      "course_rating": 36.1,
+      "slope": 142,
+      "par": 36,
+      "note": "9-hole CR value (DGV)"
+    }
+  },
+  {
+    "id": 17,
+    "name": "Golf-Club An der Pinnau e.V. – Kurs B (9 Loch)",
+    "address": "Pinneberger Str. 81a, 25451 Quickborn",
+    "website": "https://www.pinnau.de",
+    "region": "Schleswig-Holstein",
+    "holes": 9,
+    "yellow_tee_men": {
+      "course_rating": 35.7,
+      "slope": 132,
+      "par": 37,
+      "note": "9-hole CR value (DGV)"
+    }
+  },
+  {
+    "id": 18,
+    "name": "Golf-Club An der Pinnau e.V. – Kurs C (9 Loch)",
+    "address": "Pinneberger Str. 81a, 25451 Quickborn",
+    "website": "https://www.pinnau.de",
+    "region": "Schleswig-Holstein",
+    "holes": 9,
+    "yellow_tee_men": {
+      "course_rating": 35.3,
+      "slope": 121,
+      "par": 36,
+      "note": "9-hole CR value (DGV)"
+    }
+  },
+  {
+    "id": 19,
+    "name": "Golfclub Hamburg-Oberalster e.V.",
+    "address": "Bäckerbarg 10, 22889 Tangstedt",
+    "website": "https://www.golfclub-oberalster.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.7,
+      "slope": 136
+    }
+  },
+  {
+    "id": 20,
+    "name": "Golfclub Hamburg-Walddörfer e.V.",
+    "address": "Schevenbarg, 22949 Ammersbek",
+    "website": "https://www.ghw.golf",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.3,
+      "slope": 131
+    }
+  },
+  {
+    "id": 21,
+    "name": "Golfclub Hamburg-Ahrensburg e.V.",
+    "address": "Am Haidschlag 39–45, 22926 Ahrensburg",
+    "website": "https://www.golfclub-ahrensburg.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 69.7,
+      "slope": 119
+    }
+  },
+  {
+    "id": 22,
+    "name": "Golf-Club Hoisdorf e.V.",
+    "address": "Lunken, 22955 Hoisdorf",
+    "website": "https://www.gc-hoisdorf.com",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.4,
+      "slope": 126
+    }
+  },
+  {
+    "id": 23,
+    "name": "Golf-Club Jersbek e.V.",
+    "address": "Jersbeker Allee 1, 22941 Jersbek",
+    "website": "https://www.gc-jersbek.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 24,
+    "name": "Golf Club Segeberg e.V.",
+    "address": "Mühlberg 1, 23795 Groß Rönnau",
+    "website": "https://www.gc-segeberg.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.0,
+      "slope": 125
+    }
+  },
+  {
+    "id": 25,
+    "name": "Golfclub Bad Bramstedt e.V.",
+    "address": "Fuhlendorf 1, 24576 Bad Bramstedt",
+    "website": "https://www.gc-badbramstedt.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 26,
+    "name": "Golf Club Lutzhorn e.V.",
+    "address": "Bramstedter Landstr. 1, 25355 Lutzhorn",
+    "website": "https://www.golfclub-lutzhorn.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.8,
+      "slope": 123
+    }
+  },
+  {
+    "id": 27,
+    "name": "Golf Club Gut Haseldorf",
+    "address": "Heister Feld 7, 25489 Haselau",
+    "website": "https://www.gc-haseldorf.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.0,
+      "slope": 123
+    }
+  },
+  {
+    "id": 28,
+    "name": "Golfpark Weidenhof e.V.",
+    "address": "Heeder Weg 22, 25421 Pinneberg",
+    "website": "https://www.golfpark-weidenhof.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 29,
+    "name": "Golf-Park Peiner Hof e.V.",
+    "address": "Peiner Hof, 25451 Quickborn",
+    "website": "https://www.golf-park-peinerhof.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 30,
+    "name": "Wentorf-Reinbeker Golf-Club e.V.",
+    "address": "Am Golfplatz 1, 21465 Wentorf",
+    "website": "https://www.wentorf-reinbeker-gc.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.1,
+      "slope": 131
+    }
+  },
+  {
+    "id": 31,
+    "name": "Golf-Club Escheburg e.V.",
+    "address": "Am Golfplatz 1, 21039 Escheburg",
+    "website": "https://www.gc-escheburg.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.8,
+      "slope": 123
+    }
+  },
+  {
+    "id": 32,
+    "name": "Golf-Club am Sachsenwald e.V.",
+    "address": "Sachsenwaldstr. 5, 21521 Dassendorf",
+    "website": "https://www.golfclub-sachsenwald.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.5,
+      "slope": 124
+    }
+  },
+  {
+    "id": 33,
+    "name": "Golf & Country Club Brunstorf e.V.",
+    "address": "Dorfstr. 19, 21524 Brunstorf",
+    "website": "https://www.gcc-brunstorf.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.1,
+      "slope": 126
+    }
+  },
+  {
+    "id": 34,
+    "name": "Golf Club Großensee e.V.",
+    "address": "Hamburger Str. 29, 22946 Großensee",
+    "website": "https://www.gc-grossensee.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 35,
+    "name": "Golf & Country Club Gut Bissenmoor",
+    "address": "Bissenmoor 10, 24558 Henstedt-Ulzburg",
+    "website": "https://www.gc-gut-bissenmoor.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 36,
+    "name": "Hamburger Land- und Golf-Club Hittfeld e.V.",
+    "address": "Am Golfplatz 24, 21218 Seevetal",
+    "website": "https://www.hlgc-hittfeld.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.5,
+      "slope": 133
+    }
+  },
+  {
+    "id": 37,
+    "name": "Golf & Country Club Am Hockenberg",
+    "address": "Am Hockenberg 100, 21218 Seevetal",
+    "website": "https://www.amhockenberg.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.6,
+      "slope": 127
+    }
+  },
+  {
+    "id": 38,
+    "name": "Golf Club St. Dionys e.V.",
+    "address": "Widukindweg, 21357 St. Dionys",
+    "website": "https://www.golfclub-st-dionys.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.4,
+      "slope": 128
+    }
+  },
+  {
+    "id": 39,
+    "name": "Golf Gut Glinde – 18-Loch-Platz",
+    "address": "In der Trift 4, 21509 Glinde",
+    "website": "https://www.golf-gut-glinde.de",
+    "region": "Schleswig-Holstein",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 72.0,
+      "slope": 131
+    }
+  },
+  {
+    "id": 40,
+    "name": "Golfclub Buchholz-Nordheide e.V.",
+    "address": "Fischbeker Heideweg 1, 21244 Buchholz",
+    "website": "https://www.gc-buchholz.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 71.5,
+      "slope": 127
+    }
+  },
+  {
+    "id": 41,
+    "name": "Golf-Club Buxtehude",
+    "address": "Am Golfplatz 1, 21614 Buxtehude",
+    "website": "https://www.gc-buxtehude.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": 70.5,
+      "slope": 128
+    }
+  },
+  {
+    "id": 42,
+    "name": "Golfclub Gut Immenbeck e.V.",
+    "address": "Immenbecker Str. 1, 21614 Buxtehude",
+    "website": "https://www.gc-immenbeck.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 43,
+    "name": "Golf Club Deinster Mühle e.V.",
+    "address": "Am Golfplatz 1, 21717 Deinste",
+    "website": "https://www.deinstermuehle.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  },
+  {
+    "id": 44,
+    "name": "Golf Club Wümme e.V.",
+    "address": "Am Golfplatz 1, 27299 Bothel",
+    "website": "https://www.golfclub-wuemme.de",
+    "region": "Niedersachsen",
+    "holes": 18,
+    "yellow_tee_men": {
+      "course_rating": null,
+      "slope": null
+    }
+  }
 ]
