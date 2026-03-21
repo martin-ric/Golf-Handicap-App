@@ -155,7 +155,8 @@ if ('serviceWorker' in navigator) {
       if (!round || typeof round !== "object") {
         return { valid: false, error: "Invalid round object." };
       }
-      var required = ["id", "date", "score", "courseRating", "slope", "differential"];
+      // score, courseRating, slope are optional (manual entries may omit them)
+      var required = ["id", "date", "differential"];
       for (var i = 0; i < required.length; i++) {
         if (!(required[i] in round)) {
           return { valid: false, error: "Round object is missing a required field: " + required[i] + "." };
@@ -472,7 +473,8 @@ if ('serviceWorker' in navigator) {
       handicapHint: null,
       roundsList: null,
       roundsEmpty: null,
-      deleteAllButton: null
+      deleteAllButton: null,
+      addRoundButton: null
     },
 
     /**
@@ -493,6 +495,7 @@ if ('serviceWorker' in navigator) {
       this.elements.roundsList = document.getElementById("rounds-list");
       this.elements.roundsEmpty = document.getElementById("rounds-empty");
       this.elements.deleteAllButton = document.getElementById("delete-all");
+      this.elements.addRoundButton = document.getElementById("add-round");
 
       var missingElements = [];
       for (var key in this.elements) {
@@ -508,6 +511,7 @@ if ('serviceWorker' in navigator) {
       this.elements.form.addEventListener("submit", this.handleSubmit.bind(this));
       this.elements.deleteAllButton.addEventListener("click", this.handleDeleteAll.bind(this));
       this.elements.nineHoleInput.addEventListener("change", this.handleNineHoleToggle.bind(this));
+      this.elements.addRoundButton.addEventListener("click", this.showAddRoundCard.bind(this));
 
       UIService.setToday(this.elements.roundDateInput);
       this.updateUI();
@@ -663,6 +667,193 @@ if ('serviceWorker' in navigator) {
     },
 
     /**
+     * Show an editable card at the top of the rounds list for manual round entry.
+     * Only one editable card can be open at a time.
+     */
+    showAddRoundCard: function () {
+      if (document.getElementById("add-round-card")) return;
+
+      var app = this;
+
+      // Helper: build a labeled input row
+      function makeRow(labelText, inputId, type, placeholder, step) {
+        var row = document.createElement("div");
+        row.className = "round-card-editable-row";
+        var lbl = document.createElement("label");
+        lbl.setAttribute("for", inputId);
+        lbl.textContent = labelText;
+        var inp = document.createElement("input");
+        inp.type = type || "text";
+        inp.id = inputId;
+        inp.placeholder = placeholder || "";
+        if (step !== undefined) inp.step = String(step);
+        row.appendChild(lbl);
+        row.appendChild(inp);
+        return row;
+      }
+
+      var card = document.createElement("div");
+      card.className = "round-card-editable";
+      card.id = "add-round-card";
+      card.setAttribute("role", "form");
+      card.setAttribute("aria-label", "Add historic round");
+
+      // Date (optional – defaults to today)
+      var dateRow = makeRow("Date (optional, defaults to today)", "add-date", "date", "");
+      var today = new Date();
+      dateRow.querySelector("input").value =
+        today.getFullYear() + "-" +
+        String(today.getMonth() + 1).padStart(2, "0") + "-" +
+        String(today.getDate()).padStart(2, "0");
+
+      // Score differential (required)
+      var diffRow = makeRow("Score Differential", "add-differential", "number", "e.g. 12.3", 0.1);
+
+      // Optional fields
+      var scoreRow = makeRow("Gross Score (optional)", "add-score", "number", "e.g. 85");
+      var crRow = makeRow("Course Rating (optional)", "add-cr", "number", "e.g. 72.5", 0.1);
+      var slopeRow = makeRow("Slope Rating (optional)", "add-slope", "number", "e.g. 128");
+      var courseNameRow = makeRow("Course Name (optional)", "add-course-name", "text", "e.g. Augusta National");
+
+      // 9-hole checkbox
+      var nineHoleRow = document.createElement("div");
+      nineHoleRow.className = "nine-hole-row";
+      var nineHoleCb = document.createElement("input");
+      nineHoleCb.type = "checkbox";
+      nineHoleCb.id = "add-nine-hole";
+      var nineHoleLbl = document.createElement("label");
+      nineHoleLbl.setAttribute("for", "add-nine-hole");
+      nineHoleLbl.textContent = "9-hole round";
+      nineHoleRow.appendChild(nineHoleCb);
+      nineHoleRow.appendChild(nineHoleLbl);
+
+      // Inline error message
+      var errorEl = document.createElement("p");
+      errorEl.className = "add-round-error";
+      errorEl.style.display = "none";
+
+      // Save / Cancel buttons
+      var actionsDiv = document.createElement("div");
+      actionsDiv.className = "round-card-editable-actions";
+      var saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "btn-save-round";
+      saveBtn.textContent = "Save";
+      var cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "btn-cancel-round";
+      cancelBtn.textContent = "Cancel";
+      actionsDiv.appendChild(saveBtn);
+      actionsDiv.appendChild(cancelBtn);
+
+      card.appendChild(dateRow);
+      card.appendChild(diffRow);
+      card.appendChild(scoreRow);
+      card.appendChild(crRow);
+      card.appendChild(slopeRow);
+      card.appendChild(courseNameRow);
+      card.appendChild(nineHoleRow);
+      card.appendChild(errorEl);
+      card.appendChild(actionsDiv);
+
+      // Insert at top of rounds list
+      this.elements.roundsList.insertBefore(card, this.elements.roundsList.firstChild);
+      document.getElementById("add-differential").focus();
+
+      cancelBtn.addEventListener("click", function () {
+        card.remove();
+      });
+
+      saveBtn.addEventListener("click", function () {
+        app.handleSaveManualRound(card, errorEl);
+      });
+    },
+
+    /**
+     * Validate and save a manually entered round from the editable card.
+     * @param {HTMLElement} card - The editable card element
+     * @param {HTMLElement} errorEl - Inline error paragraph
+     */
+    handleSaveManualRound: function (card, errorEl) {
+      var dateInput = document.getElementById("add-date");
+      var diffInput = document.getElementById("add-differential");
+      var scoreInput = document.getElementById("add-score");
+      var crInput = document.getElementById("add-cr");
+      var slopeInput = document.getElementById("add-slope");
+      var courseNameInput = document.getElementById("add-course-name");
+      var nineHoleCb = document.getElementById("add-nine-hole");
+
+      // Score differential is required
+      var diffRaw = diffInput.value;
+      if (diffRaw === "" || diffRaw === null || diffRaw === undefined) {
+        errorEl.textContent = "Score Differential is required.";
+        errorEl.style.display = "";
+        diffInput.focus();
+        return;
+      }
+      var diff = parseFloat(diffRaw);
+      if (isNaN(diff) || !isFinite(diff) || diff < -10 || diff > 60) {
+        errorEl.textContent = "Score Differential must be a number between -10 and 60.";
+        errorEl.style.display = "";
+        diffInput.focus();
+        return;
+      }
+      diff = Math.round(diff * 10) / 10;
+
+      // Date is optional – defaults to today
+      var dateRaw = dateInput.value;
+      var date;
+      if (!dateRaw) {
+        var t = new Date();
+        date = t.getFullYear() + "-" +
+          String(t.getMonth() + 1).padStart(2, "0") + "-" +
+          String(t.getDate()).padStart(2, "0");
+      } else {
+        var dateValidation = ValidationService.validateDate(dateRaw);
+        if (!dateValidation.valid) {
+          errorEl.textContent = dateValidation.error;
+          errorEl.style.display = "";
+          dateInput.focus();
+          return;
+        }
+        date = dateRaw.trim();
+      }
+
+      // Optional numeric fields
+      var score = scoreInput.value !== "" ? parseInt(scoreInput.value, 10) : null;
+      var courseRating = crInput.value !== "" ? parseFloat(crInput.value) : null;
+      var slope = slopeInput.value !== "" ? parseInt(slopeInput.value, 10) : null;
+      var courseName = courseNameInput.value.trim().slice(0, 80) || null;
+      var isNineHole = nineHoleCb.checked;
+
+      errorEl.style.display = "none";
+
+      var newRound = {
+        id: String(Date.now()),
+        date: date,
+        score: score,
+        courseRating: courseRating,
+        slope: slope,
+        differential: diff,
+        courseName: courseName,
+        isNineHole: isNineHole,
+        manualEntry: true
+      };
+
+      var rounds = StorageService.loadRounds();
+      rounds.push(newRound);
+      var saveResult = StorageService.saveRounds(rounds);
+      if (!saveResult.success) {
+        errorEl.textContent = saveResult.error;
+        errorEl.style.display = "";
+        return;
+      }
+
+      card.remove();
+      this.updateUI();
+    },
+
+    /**
      * Update handicap display.
      */
     updateHandicap: function () {
@@ -726,11 +917,20 @@ if ('serviceWorker' in navigator) {
 
         var details = document.createElement("div");
         details.className = "round-card-details";
-        var detailsText = "Score " + String(round.score) + " · CR " + String(round.courseRating) + " · Slope " + String(round.slope);
+        var detailsParts = [];
         if (round.courseName) {
-          detailsText = round.courseName + " · " + detailsText;
+          detailsParts.push(round.courseName);
         }
-        details.textContent = detailsText;
+        if (round.score !== null && round.score !== undefined) {
+          detailsParts.push("Score " + round.score);
+        }
+        if (round.courseRating !== null && round.courseRating !== undefined) {
+          detailsParts.push("CR " + round.courseRating);
+        }
+        if (round.slope !== null && round.slope !== undefined) {
+          detailsParts.push("Slope " + round.slope);
+        }
+        details.textContent = detailsParts.join(" · ");
 
         card.appendChild(dateSpan);
         card.appendChild(differentialSpan);

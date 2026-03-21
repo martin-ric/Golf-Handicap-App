@@ -395,6 +395,118 @@
     vertical-align: middle;
   }
 
+  /* Rounds footer (Add button below list) */
+  .rounds-footer {
+    margin-top: 0.75rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .btn-add-round:hover {
+    color: #166534;
+    background: rgba(22, 101, 52, 0.07);
+  }
+
+  /* Editable round card (manual entry) */
+  .round-card-editable {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    background: #f8f9fa;
+    border: 1px solid rgba(10, 31, 22, 0.12);
+    border-radius: 8px;
+    animation: cardFadeIn 0.3s ease-out;
+  }
+
+  .round-card-editable-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .round-card-editable-row label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgba(10, 31, 22, 0.7);
+  }
+
+  .round-card-editable-row input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #0a1f16;
+    background: #ffffff;
+    border: 1px solid rgba(10, 31, 22, 0.15);
+    border-radius: 6px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .round-card-editable-row input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  .round-card-editable-row input[type="number"]::-webkit-outer-spin-button,
+  .round-card-editable-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .round-card-editable-row input:focus {
+    outline: none;
+    border-color: #0a1f16;
+    box-shadow: 0 0 0 2px rgba(10, 31, 22, 0.08);
+  }
+
+  .round-card-editable-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .btn-save-round {
+    flex: 1;
+    padding: 0.55rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: inherit;
+    color: #f8f9fa;
+    background: #0a1f16;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+  }
+
+  .btn-save-round:hover {
+    opacity: 0.85;
+  }
+
+  .btn-cancel-round {
+    padding: 0.55rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    color: rgba(10, 31, 22, 0.65);
+    background: rgba(10, 31, 22, 0.06);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .btn-cancel-round:hover {
+    background: rgba(10, 31, 22, 0.1);
+    color: #0a1f16;
+  }
+
+  .add-round-error {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #b91c1c;
+  }
+
   /* Responsive */
    @media (max-width: 480px) {
      body {
