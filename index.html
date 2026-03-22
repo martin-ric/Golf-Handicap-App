@@ -67,12 +67,14 @@
     <section class="rounds-section" aria-labelledby="rounds-title-heading">
       <div class="rounds-header">
         <h2 class="rounds-title" id="rounds-title-heading">My Recent Rounds</h2>
-        <button type="button" class="btn-text btn-delete-all" id="delete-all" title="Delete all rounds" aria-label="Delete all saved rounds">Delete All</button>
+        <div class="rounds-header-actions">
+          <button type="button" class="btn-text btn-add-round" id="add-round" aria-label="Add a historic round manually">Add</button>
+          <button type="button" class="btn-text btn-delete-all" id="delete-all" title="Delete all rounds" aria-label="Delete all saved rounds">Delete All</button>
+        </div>
       </div>
       <div id="rounds-list" class="rounds-list" role="list" aria-label="List of saved golf rounds"></div>
       <p id="rounds-empty" class="rounds-empty" role="status" aria-live="polite">No rounds saved yet.</p>
       <div class="rounds-footer">
-        <button type="button" class="btn-text btn-add-round" id="add-round" aria-label="Add a historic round manually">Add</button>
         <button type="button" class="btn-text btn-export" id="export-data" aria-label="Export rounds as JSON file">Export</button>
         <button type="button" class="btn-text btn-import" id="import-data" aria-label="Import rounds from JSON file">Import</button>
         <input type="file" id="import-file-input" accept=".json" style="display:none" aria-hidden="true" tabindex="-1">

@@ -230,7 +230,13 @@
      gap: 0.75rem;
      margin-bottom: 1rem;
    }
-   
+
+  .rounds-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
    .rounds-title {
      margin: 0;
      font-size: 1rem;

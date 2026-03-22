@@ -1207,8 +1207,8 @@ if ('serviceWorker' in navigator) {
       card.appendChild(errorEl);
       card.appendChild(actionsDiv);
 
-      // Insert at bottom of rounds list (above the Add button)
-      this.elements.roundsList.appendChild(card);
+      // Insert at top of rounds list
+      this.elements.roundsList.prepend(card);
 
       // Attach autocomplete to the course name field in the editable card
       CourseService.attachAutocomplete(
