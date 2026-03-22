@@ -73,7 +73,11 @@
       <p id="rounds-empty" class="rounds-empty" role="status" aria-live="polite">No rounds saved yet.</p>
       <div class="rounds-footer">
         <button type="button" class="btn-text btn-add-round" id="add-round" aria-label="Add a historic round manually">Add</button>
+        <button type="button" class="btn-text btn-export" id="export-data" aria-label="Export rounds as JSON file">Export</button>
+        <button type="button" class="btn-text btn-import" id="import-data" aria-label="Import rounds from JSON file">Import</button>
+        <input type="file" id="import-file-input" accept=".json" style="display:none" aria-hidden="true" tabindex="-1">
       </div>
+      <p id="import-status" class="import-status" style="display:none" role="status" aria-live="polite"></p>
     </section>
   </main>
 

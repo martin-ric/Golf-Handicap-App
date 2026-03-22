@@ -241,6 +241,214 @@ if ('serviceWorker' in navigator) {
   };
 
   // ============================================================================
+  // IMPORT / EXPORT SERVICE
+  // ============================================================================
+
+  var ImportExportService = {
+    MAX_IMPORT_ROUNDS: 500,
+
+    /**
+     * Export rounds and course book as a JSON file download.
+     */
+    exportJSON: function () {
+      var rounds = StorageService.loadRounds();
+      var courseBook = CourseService.loadCourseBook();
+      var today = new Date();
+      var exportedAt = today.getFullYear() + "-" +
+        String(today.getMonth() + 1).padStart(2, "0") + "-" +
+        String(today.getDate()).padStart(2, "0");
+
+      var exportData = {
+        version: 1,
+        exportedAt: exportedAt,
+        rounds: rounds,
+        courseBook: courseBook
+      };
+
+      var json = JSON.stringify(exportData, null, 2);
+      var blob = new Blob([json], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "golf-handicap-export-" + exportedAt + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+
+    /**
+     * Validate a single round from an imported file.
+     * Returns whitelisted fields only; re-generates id.
+     * @param {*} raw - Raw object from parsed JSON
+     * @param {number} index - Position in the array (for error messages)
+     * @returns {{valid: boolean, round: Object|null, error: string|null}}
+     */
+    validateImportedRound: function (raw, index) {
+      var prefix = "Round " + (index + 1) + ": ";
+
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return { valid: false, round: null, error: prefix + "must be an object." };
+      }
+
+      // date (required)
+      if (typeof raw.date !== "string") {
+        return { valid: false, round: null, error: prefix + "date must be a string." };
+      }
+      var date = raw.date.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return { valid: false, round: null, error: prefix + "date must be in YYYY-MM-DD format." };
+      }
+      var dateObj = new Date(date + "T00:00:00");
+      if (isNaN(dateObj.getTime())) {
+        return { valid: false, round: null, error: prefix + "date is not a valid date." };
+      }
+      var todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+      if (dateObj > todayEnd) {
+        return { valid: false, round: null, error: prefix + "date cannot be in the future." };
+      }
+
+      // differential (required)
+      if (typeof raw.differential !== "number" || isNaN(raw.differential) || !isFinite(raw.differential)) {
+        return { valid: false, round: null, error: prefix + "differential must be a number." };
+      }
+      if (raw.differential < -10 || raw.differential > 60) {
+        return { valid: false, round: null, error: prefix + "differential must be between -10 and 60." };
+      }
+
+      // score (optional)
+      var score = null;
+      if (raw.score !== null && raw.score !== undefined) {
+        if (typeof raw.score !== "number" || isNaN(raw.score) || !isFinite(raw.score)) {
+          return { valid: false, round: null, error: prefix + "score must be a number." };
+        }
+        if (raw.score < 1 || raw.score > 200) {
+          return { valid: false, round: null, error: prefix + "score must be between 1 and 200." };
+        }
+        score = raw.score;
+      }
+
+      // courseRating (optional)
+      var courseRating = null;
+      if (raw.courseRating !== null && raw.courseRating !== undefined) {
+        if (typeof raw.courseRating !== "number" || isNaN(raw.courseRating) || !isFinite(raw.courseRating)) {
+          return { valid: false, round: null, error: prefix + "courseRating must be a number." };
+        }
+        if (raw.courseRating < 20 || raw.courseRating > 80) {
+          return { valid: false, round: null, error: prefix + "courseRating must be between 20 and 80." };
+        }
+        courseRating = raw.courseRating;
+      }
+
+      // slope (optional)
+      var slope = null;
+      if (raw.slope !== null && raw.slope !== undefined) {
+        if (typeof raw.slope !== "number" || isNaN(raw.slope) || !isFinite(raw.slope)) {
+          return { valid: false, round: null, error: prefix + "slope must be a number." };
+        }
+        if (raw.slope < 55 || raw.slope > 155) {
+          return { valid: false, round: null, error: prefix + "slope must be between 55 and 155." };
+        }
+        slope = raw.slope;
+      }
+
+      // courseName (optional) — silently truncate to 80 chars
+      var courseName = null;
+      if (raw.courseName !== null && raw.courseName !== undefined) {
+        if (typeof raw.courseName !== "string") {
+          return { valid: false, round: null, error: prefix + "courseName must be a string." };
+        }
+        courseName = raw.courseName.slice(0, 80);
+      }
+
+      // isNineHole (optional, coerce to boolean)
+      var isNineHole = raw.isNineHole === true;
+
+      // manualEntry (optional, coerce to boolean)
+      var manualEntry = raw.manualEntry === true;
+
+      // Return whitelisted round with fresh id
+      return {
+        valid: true,
+        round: {
+          id: String(Date.now()) + "-" + index,
+          date: date,
+          differential: raw.differential,
+          score: score,
+          courseRating: courseRating,
+          slope: slope,
+          courseName: courseName,
+          isNineHole: isNineHole,
+          manualEntry: manualEntry
+        },
+        error: null
+      };
+    },
+
+    /**
+     * Parse and fully validate a JSON import string.
+     * @param {string} jsonString - Raw file contents
+     * @returns {{valid: boolean, rounds: Array|null, courseBook: Array|null, error: string|null}}
+     */
+    parseImportFile: function (jsonString) {
+      var parsed;
+      try {
+        parsed = JSON.parse(jsonString);
+      } catch (e) {
+        return { valid: false, rounds: null, courseBook: null, error: "The file is not valid JSON." };
+      }
+
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { valid: false, rounds: null, courseBook: null, error: "Invalid file format." };
+      }
+
+      if (!Array.isArray(parsed.rounds)) {
+        return { valid: false, rounds: null, courseBook: null, error: "File does not contain a rounds array." };
+      }
+
+      if (parsed.rounds.length > this.MAX_IMPORT_ROUNDS) {
+        return { valid: false, rounds: null, courseBook: null, error: "File contains more than " + this.MAX_IMPORT_ROUNDS + " rounds. Import aborted." };
+      }
+
+      var validatedRounds = [];
+      var errors = [];
+      for (var i = 0; i < parsed.rounds.length; i++) {
+        var result = this.validateImportedRound(parsed.rounds[i], i);
+        if (result.valid) {
+          validatedRounds.push(result.round);
+        } else {
+          errors.push(result.error);
+        }
+      }
+
+      if (errors.length > 0) {
+        return {
+          valid: false, rounds: null, courseBook: null,
+          error: errors[0] + (errors.length > 1 ? " (and " + (errors.length - 1) + " more error" + (errors.length - 1 !== 1 ? "s" : "") + ")" : "")
+        };
+      }
+
+      // courseBook (optional) — validate if present, silently skip invalid entries
+      var courseBook = null;
+      if (Array.isArray(parsed.courseBook)) {
+        courseBook = [];
+        for (var j = 0; j < parsed.courseBook.length; j++) {
+          var c = parsed.courseBook[j];
+          if (c && typeof c === "object" &&
+              typeof c.name === "string" && c.name.trim() &&
+              typeof c.cr === "number" && isFinite(c.cr) && c.cr >= 20 && c.cr <= 80 &&
+              typeof c.slope === "number" && isFinite(c.slope) && c.slope >= 55 && c.slope <= 155) {
+            courseBook.push({ name: c.name.slice(0, 80), cr: c.cr, slope: c.slope });
+          }
+        }
+      }
+
+      return { valid: true, rounds: validatedRounds, courseBook: courseBook, error: null };
+    }
+  };
+
+  // ============================================================================
   // COURSE SERVICE (autocomplete + user course book)
   // ============================================================================
 
@@ -674,7 +882,11 @@ if ('serviceWorker' in navigator) {
       roundsList: null,
       roundsEmpty: null,
       deleteAllButton: null,
-      addRoundButton: null
+      addRoundButton: null,
+      exportButton: null,
+      importButton: null,
+      importFileInput: null,
+      importStatus: null
     },
 
     /**
@@ -696,10 +908,16 @@ if ('serviceWorker' in navigator) {
       this.elements.roundsEmpty = document.getElementById("rounds-empty");
       this.elements.deleteAllButton = document.getElementById("delete-all");
       this.elements.addRoundButton = document.getElementById("add-round");
+      this.elements.exportButton = document.getElementById("export-data");
+      this.elements.importButton = document.getElementById("import-data");
+      this.elements.importFileInput = document.getElementById("import-file-input");
+      this.elements.importStatus = document.getElementById("import-status");
 
+      // Export/import elements are optional — exclude from required check
+      var optionalElements = ["exportButton", "importButton", "importFileInput", "importStatus"];
       var missingElements = [];
       for (var key in this.elements) {
-        if (!this.elements[key]) {
+        if (!this.elements[key] && optionalElements.indexOf(key) === -1) {
           missingElements.push(key);
         }
       }
@@ -712,6 +930,17 @@ if ('serviceWorker' in navigator) {
       this.elements.deleteAllButton.addEventListener("click", this.handleDeleteAll.bind(this));
       this.elements.nineHoleInput.addEventListener("change", this.handleNineHoleToggle.bind(this));
       this.elements.addRoundButton.addEventListener("click", this.showAddRoundCard.bind(this));
+
+      if (this.elements.exportButton) {
+        this.elements.exportButton.addEventListener("click", this.handleExport.bind(this));
+      }
+      if (this.elements.importButton && this.elements.importFileInput) {
+        var self = this;
+        this.elements.importButton.addEventListener("click", function () {
+          self.elements.importFileInput.click();
+        });
+        this.elements.importFileInput.addEventListener("change", this.handleImportFileSelected.bind(this));
+      }
 
       UIService.setToday(this.elements.roundDateInput);
 
@@ -1173,6 +1402,95 @@ if ('serviceWorker' in navigator) {
         card.appendChild(details);
         app.elements.roundsList.appendChild(card);
       });
+    },
+
+    /**
+     * Handle Export button click.
+     */
+    handleExport: function () {
+      var rounds = StorageService.loadRounds();
+      if (rounds.length === 0) {
+        alert("No rounds to export.");
+        return;
+      }
+      ImportExportService.exportJSON();
+    },
+
+    /**
+     * Handle file selected for import.
+     * @param {Event} event - Change event from file input
+     */
+    handleImportFileSelected: function (event) {
+      var file = event.target.files[0];
+      // Reset so the same file can be re-selected if needed
+      event.target.value = "";
+
+      if (!file) return;
+
+      var app = this;
+      var reader = new FileReader();
+
+      reader.onerror = function () {
+        app.showImportStatus("Could not read the file.", true);
+      };
+
+      reader.onload = function (e) {
+        var result = ImportExportService.parseImportFile(e.target.result);
+        if (!result.valid) {
+          app.showImportStatus(result.error, true);
+          return;
+        }
+
+        var importCount = result.rounds.length;
+        var existingRounds = StorageService.loadRounds();
+        var existingCount = existingRounds.length;
+
+        var replace = true;
+        if (existingCount > 0) {
+          var msg = "Found " + importCount + " round" + (importCount !== 1 ? "s" : "") + " in the file.\n\n" +
+            "OK \u2014 Replace your " + existingCount + " existing round" + (existingCount !== 1 ? "s" : "") + " with the imported data.\n" +
+            "Cancel \u2014 Add imported rounds to your existing rounds.";
+          replace = confirm(msg);
+        }
+
+        var finalRounds = replace ? result.rounds : existingRounds.concat(result.rounds);
+
+        var saveResult = StorageService.saveRounds(finalRounds);
+        if (!saveResult.success) {
+          app.showImportStatus("Import failed: " + saveResult.error, true);
+          return;
+        }
+
+        // Merge course book entries (add new courses, don't overwrite existing)
+        if (result.courseBook && result.courseBook.length > 0) {
+          result.courseBook.forEach(function (c) {
+            CourseService.saveUserCourse(c.name, c.cr, c.slope);
+          });
+        }
+
+        app.updateUI();
+        app.showImportStatus("Imported " + importCount + " round" + (importCount !== 1 ? "s" : "") + " successfully.", false);
+      };
+
+      reader.readAsText(file);
+    },
+
+    /**
+     * Show a temporary status message below the rounds footer.
+     * @param {string} message - Message to display
+     * @param {boolean} isError - True for error styling, false for success
+     */
+    showImportStatus: function (message, isError) {
+      var el = this.elements.importStatus;
+      if (!el) return;
+      el.textContent = message;
+      el.className = "import-status " + (isError ? "import-status-error" : "import-status-success");
+      el.style.display = "";
+      clearTimeout(this._importStatusTimer);
+      this._importStatusTimer = setTimeout(function () {
+        el.style.display = "none";
+        el.textContent = "";
+      }, 5000);
     },
 
     /**
