@@ -448,16 +448,42 @@
     margin-top: 0.15rem;
   }
 
-  /* Rounds footer (Add button below list) */
+  /* Rounds footer (Add / Export / Import buttons) */
   .rounds-footer {
     margin-top: 0.75rem;
     display: flex;
     justify-content: flex-end;
+    gap: 0.25rem;
   }
 
   .btn-add-round:hover {
     color: #166534;
     background: rgba(22, 101, 52, 0.07);
+  }
+
+  .btn-export:hover,
+  .btn-import:hover {
+    color: #0a1f16;
+    background: rgba(10, 31, 22, 0.06);
+  }
+
+  /* Import status message */
+  .import-status {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    text-align: right;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .import-status-success {
+    color: #166534;
+    background: rgba(22, 101, 52, 0.08);
+  }
+
+  .import-status-error {
+    color: #b91c1c;
+    background: rgba(185, 28, 28, 0.06);
   }
 
   /* Editable round card (manual entry) */
