@@ -278,16 +278,39 @@
    }
    
    .round-card {
-     display: grid;
-     grid-template-columns: 1fr auto auto;
-     gap: 0.75rem 1rem;
-     align-items: center;
+     display: flex;
+     flex-direction: column;
+     gap: 0.4rem;
      padding: 0.9rem 1rem;
      background: #f8f9fa;
      border: 1px solid rgba(10, 31, 22, 0.06);
      border-radius: 8px;
      font-size: 0.875rem;
      animation: cardFadeIn 0.3s ease-out;
+   }
+
+   .round-card-header {
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
+     gap: 0.5rem;
+   }
+
+   .round-card-actions {
+     display: flex;
+     align-items: center;
+     gap: 0.1rem;
+     flex-shrink: 0;
+   }
+
+   /* A counting round (feeds the handicap) gets a green accent bar */
+   .round-card-counting {
+     box-shadow: inset 3px 0 0 0 #166534;
+   }
+
+   /* An excluded round is dimmed */
+   .round-card-excluded {
+     opacity: 0.6;
    }
    
    @keyframes cardFadeIn {
@@ -307,26 +330,37 @@
    }
    
    .round-card-details {
-     grid-column: 1 / -1;
      display: flex;
      flex-wrap: wrap;
      gap: 0.75rem 1.25rem;
      font-size: 0.8125rem;
      color: rgba(10, 31, 22, 0.65);
    }
-   
+
+   .round-card-details:empty {
+     display: none;
+   }
+
+   .round-card-note {
+     font-size: 0.8125rem;
+     font-style: italic;
+     color: rgba(10, 31, 22, 0.6);
+     word-break: break-word;
+   }
+
    .round-card-differential {
      font-weight: 600;
      color: #0a1f16;
    }
-   
+
+   /* Round card action buttons (count toggle, edit, delete) */
+   .btn-round-count,
+   .btn-round-edit,
    .btn-round-delete {
-     grid-row: 1;
-     grid-column: 3;
-     width: 32px;
-     height: 32px;
+     width: 30px;
+     height: 30px;
      padding: 0;
-     font-size: 1.125rem;
+     font-size: 1rem;
      line-height: 1;
      color: rgba(10, 31, 22, 0.4);
      background: none;
@@ -336,7 +370,28 @@
      transition: color 0.2s ease, background 0.2s ease;
      flex-shrink: 0;
    }
-   
+
+   .btn-round-count {
+     color: #166534;
+   }
+
+   .btn-round-count.off {
+     color: rgba(10, 31, 22, 0.35);
+   }
+
+   .btn-round-count:hover {
+     background: rgba(22, 101, 52, 0.08);
+   }
+
+   .btn-round-edit:hover {
+     color: #0a1f16;
+     background: rgba(10, 31, 22, 0.08);
+   }
+
+   .btn-round-delete {
+     font-size: 1.125rem;
+   }
+
    .btn-round-delete:hover {
      color: #b91c1c;
      background: rgba(185, 28, 28, 0.08);
@@ -380,14 +435,14 @@
     cursor: pointer;
   }
 
-  /* HCPI input row for 9-hole rounds (shown/hidden via JS) */
-  #nine-hole-hcpi-row {
+  /* HCPI input row for 9-hole / Stableford rounds (shown/hidden via JS) */
+  #hcpi-row {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
   }
 
-  /* 9H badge shown in round cards */
+  /* Badges shown in round cards (9H, Stbf, Counts, Not counted) */
   .round-card-badge {
     display: inline-block;
     padding: 0.1rem 0.35rem;
@@ -399,6 +454,61 @@
     border-radius: 4px;
     margin-left: 0.4rem;
     vertical-align: middle;
+  }
+
+  .round-card-badge-counts {
+    color: #166534;
+    background: rgba(22, 101, 52, 0.12);
+  }
+
+  .round-card-badge-excluded {
+    color: #b45309;
+    background: rgba(180, 83, 9, 0.1);
+  }
+
+  /* Scoring method toggle (Gross Score / Stableford).
+     Scoped selectors override the global `.form button` styles. */
+  .scoring-method-toggle {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .scoring-method-toggle .scoring-method-btn {
+    flex: 1;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: rgba(10, 31, 22, 0.55);
+    background: #f8f9fa;
+    border: 1px solid rgba(10, 31, 22, 0.08);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .scoring-method-toggle .scoring-method-btn:hover {
+    color: #0a1f16;
+    border-color: rgba(10, 31, 22, 0.15);
+  }
+
+  /* Active option: light green tint with an inset accent bar,
+     matching the highlight used for handicap-counting rounds. */
+  .scoring-method-toggle .scoring-method-btn.active {
+    color: #166534;
+    font-weight: 600;
+    background: rgba(22, 101, 52, 0.1);
+    border-color: rgba(22, 101, 52, 0.25);
+    box-shadow: inset 3px 0 0 0 #166534;
+  }
+
+  /* Stableford points row (shown/hidden via JS) */
+  #stableford-row {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
   }
 
   /* Course name autocomplete wrapper (main form) */
@@ -590,6 +700,135 @@
     margin: 0;
     font-size: 0.8125rem;
     color: #b91c1c;
+  }
+
+  /* ============================================
+     Insights (analytics) — collapsible section
+     ============================================ */
+  .insights-section {
+    margin-top: 2rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid rgba(10, 31, 22, 0.08);
+  }
+
+  .insights-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0a1f16;
+  }
+
+  .insights-panel {
+    margin-top: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+  }
+
+  .insights-block-title {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: rgba(10, 31, 22, 0.6);
+  }
+
+  .insights-empty {
+    margin: 0;
+    padding: 1rem;
+    font-size: 0.8125rem;
+    color: rgba(10, 31, 22, 0.5);
+    text-align: center;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px dashed rgba(10, 31, 22, 0.12);
+  }
+
+  /* Handicap trend chart */
+  .handicap-chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .handicap-chart-svg .chart-area {
+    stroke: none;
+  }
+
+  .handicap-chart-svg .chart-line {
+    fill: none;
+    stroke: #166534;
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .handicap-chart-svg .chart-point {
+    fill: #ffffff;
+    stroke: #166534;
+    stroke-width: 2;
+    cursor: pointer;
+    transition: r 0.15s ease;
+  }
+
+  .handicap-chart-svg .chart-hit {
+    cursor: pointer;
+  }
+
+  .handicap-chart-svg .chart-label {
+    fill: rgba(10, 31, 22, 0.45);
+    font-size: 9px;
+    font-family: inherit;
+  }
+
+  .handicap-chart-svg .chart-value-label {
+    fill: #166534;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: inherit;
+  }
+
+  .handicap-chart-svg .chart-tooltip-bg {
+    fill: #0a1f16;
+  }
+
+  .handicap-chart-svg .chart-tooltip-text {
+    fill: #ffffff;
+    font-size: 9px;
+    font-weight: 600;
+    font-family: inherit;
+  }
+
+  /* Course statistics table */
+  .course-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .course-stats-table th,
+  .course-stats-table td {
+    padding: 0.5rem 0.4rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(10, 31, 22, 0.06);
+  }
+
+  .course-stats-table th {
+    font-weight: 600;
+    color: rgba(10, 31, 22, 0.55);
+  }
+
+  .course-stats-table th.num,
+  .course-stats-table td.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .course-stats-table .course-stats-name {
+    font-weight: 500;
+    color: #0a1f16;
+    word-break: break-word;
   }
 
   /* Responsive */

@@ -147,6 +147,30 @@ if ('serviceWorker' in navigator) {
     },
 
     /**
+     * Validates Stableford points input.
+     * @param {string|number} points - Stableford points
+     * @param {boolean} [isNineHole] - Whether this is a 9-hole round
+     * @returns {{valid: boolean, error: string|null, value: number|null}}
+     */
+    validateStablefordPoints: function (points, isNineHole) {
+      if (points === "" || points === null || points === undefined) {
+        return { valid: false, error: "Please enter your Stableford points.", value: null };
+      }
+      var num = typeof points === "string" ? parseFloat(points) : Number(points);
+      if (isNaN(num) || !isFinite(num)) {
+        return { valid: false, error: "Stableford points must be a valid number.", value: null };
+      }
+      if (num !== Math.floor(num)) {
+        return { valid: false, error: "Stableford points must be a whole number.", value: null };
+      }
+      var maxPoints = isNineHole ? 54 : 90;
+      if (num < 0 || num > maxPoints) {
+        return { valid: false, error: "Stableford points must be between 0 and " + maxPoints + ".", value: null };
+      }
+      return { valid: true, error: null, value: num };
+    },
+
+    /**
      * Validates a round object (from storage).
      * @param {Object} round - Round object
      * @returns {{valid: boolean, error: string|null}}
@@ -362,8 +386,47 @@ if ('serviceWorker' in navigator) {
         courseName = raw.courseName.slice(0, 80);
       }
 
+      // note (optional) — silently truncate to 280 chars
+      var note = null;
+      if (raw.note !== null && raw.note !== undefined) {
+        if (typeof raw.note !== "string") {
+          return { valid: false, round: null, error: prefix + "note must be a string." };
+        }
+        note = raw.note.slice(0, 280);
+      }
+
+      // stablefordPoints (optional)
+      var stablefordPoints = null;
+      if (raw.stablefordPoints !== null && raw.stablefordPoints !== undefined) {
+        if (typeof raw.stablefordPoints !== "number" || isNaN(raw.stablefordPoints) || !isFinite(raw.stablefordPoints)) {
+          return { valid: false, round: null, error: prefix + "stablefordPoints must be a number." };
+        }
+        if (raw.stablefordPoints < 0 || raw.stablefordPoints > 90) {
+          return { valid: false, round: null, error: prefix + "stablefordPoints must be between 0 and 90." };
+        }
+        stablefordPoints = raw.stablefordPoints;
+      }
+
+      // hcpiUsed (optional)
+      var hcpiUsed = null;
+      if (raw.hcpiUsed !== null && raw.hcpiUsed !== undefined) {
+        if (typeof raw.hcpiUsed !== "number" || isNaN(raw.hcpiUsed) || !isFinite(raw.hcpiUsed)) {
+          return { valid: false, round: null, error: prefix + "hcpiUsed must be a number." };
+        }
+        if (raw.hcpiUsed < -6 || raw.hcpiUsed > 54) {
+          return { valid: false, round: null, error: prefix + "hcpiUsed must be between -6 and 54." };
+        }
+        hcpiUsed = raw.hcpiUsed;
+      }
+
+      // scoringMethod (optional, whitelist to known values)
+      var scoringMethod = raw.scoringMethod === "stableford" ? "stableford" : "gross";
+
       // isNineHole (optional, coerce to boolean)
       var isNineHole = raw.isNineHole === true;
+
+      // excludeFromHandicap (optional, coerce to boolean)
+      var excludeFromHandicap = raw.excludeFromHandicap === true;
 
       // manualEntry (optional, coerce to boolean)
       var manualEntry = raw.manualEntry === true;
@@ -380,6 +443,11 @@ if ('serviceWorker' in navigator) {
           slope: slope,
           courseName: courseName,
           isNineHole: isNineHole,
+          scoringMethod: scoringMethod,
+          stablefordPoints: stablefordPoints,
+          hcpiUsed: hcpiUsed,
+          note: note,
+          excludeFromHandicap: excludeFromHandicap,
           manualEntry: manualEntry
         },
         error: null
@@ -678,6 +746,39 @@ if ('serviceWorker' in navigator) {
     },
 
     /**
+     * Calculate the score differential from an 18-hole Stableford result.
+     * Derived from the WHS identity AGS = Par + CourseHandicap + (36 - points),
+     * which simplifies to: Differential = HCPI + (113 / Slope) * (36 - points).
+     * Scoring exactly 36 points (playing to handicap) yields a differential equal
+     * to the Handicap Index.
+     * @param {number} points - Stableford points scored
+     * @param {number} slope - Slope rating
+     * @param {number} hcpi - Handicap Index used to play the round
+     * @returns {number} Score differential rounded to one decimal place
+     */
+    calculateStablefordDifferential: function (points, slope, hcpi) {
+      var scoreDifferential = hcpi + (CONFIG.CONSTANT_SLOPE / slope) * (36 - points);
+      return Math.round(scoreDifferential * 10) / 10;
+    },
+
+    /**
+     * Calculate the score differential from a 9-hole Stableford result.
+     * Over 9 holes, playing to handicap means 18 points. The 9-hole portion is
+     * derived as: diff9 = HCPI/2 + (113 / Slope) * (18 - points), then combined
+     * with the expected differential of the 9 holes not played (same supplement
+     * used for 9-hole gross rounds).
+     * @param {number} points - Stableford points scored over 9 holes
+     * @param {number} slope - 9-hole slope rating
+     * @param {number} hcpi - Handicap Index used to play the round
+     * @returns {number} 18-hole score differential rounded to one decimal place
+     */
+    calculateNineHoleStablefordDifferential: function (points, slope, hcpi) {
+      var diff9 = (hcpi / 2) + (CONFIG.CONSTANT_SLOPE / slope) * (18 - points);
+      var expectedSD = this.calculateExpectedNineHoleSD(hcpi);
+      return Math.round((diff9 + expectedSD) * 10) / 10;
+    },
+
+    /**
      * Get WHS calculation parameters based on number of rounds.
      * Implements the official WHS sliding scale.
      * @param {number} roundCount - Number of rounds available
@@ -729,45 +830,51 @@ if ('serviceWorker' in navigator) {
      */
     calculateHandicapIndex: function (rounds) {
       if (!rounds || rounds.length === 0) {
-        return { handicap: null, roundsUsed: 0, bestRoundsUsed: 0, adjustment: 0 };
+        return { handicap: null, roundsUsed: 0, bestRoundsUsed: 0, adjustment: 0, usedRoundIds: [] };
       }
-      
+
       // Take only the most recent 20 rounds
       var roundsToConsider = rounds.slice(0, CONFIG.MAX_ROUNDS_FOR_HANDICAP);
       var roundsUsed = roundsToConsider.length;
-      
+
       // Get WHS calculation parameters based on number of rounds
       var params = this.getWHSCalculationParams(roundsUsed);
-      
+
       if (params.countToUse === 0) {
-        return { handicap: null, roundsUsed: roundsUsed, bestRoundsUsed: 0, adjustment: 0 };
+        return { handicap: null, roundsUsed: roundsUsed, bestRoundsUsed: 0, adjustment: 0, usedRoundIds: [] };
       }
-      
+
       // Sort by differential (ascending = best first)
       var sortedByDifferential = roundsToConsider.slice().sort(function (a, b) {
         return a.differential - b.differential;
       });
-      
+
       // Take the best rounds
       var bestRounds = sortedByDifferential.slice(0, params.countToUse);
-      
+
+      // Track which rounds feed into the handicap (for highlighting in the list)
+      var usedRoundIds = bestRounds.map(function (r) {
+        return r.id;
+      });
+
       // Calculate average
       var sum = bestRounds.reduce(function (acc, r) {
         return acc + r.differential;
       }, 0);
       var average = sum / params.countToUse;
-      
+
       // Apply adjustment
       var adjustedAverage = average + params.adjustment;
-      
+
       // Round to one decimal place
       var handicapIndex = Math.round(adjustedAverage * 10) / 10;
-      
+
       return {
         handicap: handicapIndex,
         roundsUsed: roundsUsed,
         bestRoundsUsed: params.countToUse,
-        adjustment: params.adjustment
+        adjustment: params.adjustment,
+        usedRoundIds: usedRoundIds
       };
     },
 
@@ -778,6 +885,278 @@ if ('serviceWorker' in navigator) {
      */
     getHandicapInfo: function (rounds) {
       return this.calculateHandicapIndex(rounds);
+    }
+  };
+
+  // ============================================================================
+  // ANALYTICS SERVICE (derived insights — read-only)
+  // ============================================================================
+
+  var AnalyticsService = {
+    SVG_NS: "http://www.w3.org/2000/svg",
+
+    /**
+     * Compute the Handicap Index as it stood after each handicap-eligible round,
+     * producing a chronological series for the trend chart.
+     * @param {Array<Object>} poolRounds - Handicap-eligible rounds (any order)
+     * @returns {Array<{date: string, handicap: number}>} Oldest first
+     */
+    computeHandicapTrend: function (poolRounds) {
+      var oldestFirst = poolRounds.slice().sort(function (a, b) {
+        return a.date.localeCompare(b.date);
+      });
+      var series = [];
+      for (var i = 0; i < oldestFirst.length; i++) {
+        // Rounds up to and including this date, newest first for the WHS calc
+        var newestFirst = oldestFirst.slice(0, i + 1).reverse();
+        var info = WHSService.calculateHandicapIndex(newestFirst);
+        if (info.handicap !== null) {
+          series.push({ date: oldestFirst[i].date, handicap: info.handicap });
+        }
+      }
+      return series;
+    },
+
+    /**
+     * Aggregate per-course statistics from the rounds that have a course name.
+     * @param {Array<Object>} rounds - All rounds
+     * @returns {Array<Object>} Stats sorted by rounds played (desc), then last played
+     */
+    computeCourseStats: function (rounds) {
+      var map = {};
+      rounds.forEach(function (r) {
+        if (!r.courseName) return;
+        var key = r.courseName.toLowerCase();
+        if (!map[key]) {
+          map[key] = { name: r.courseName, diffs: [], lastPlayed: r.date };
+        }
+        var entry = map[key];
+        entry.diffs.push(r.differential);
+        if (r.date > entry.lastPlayed) entry.lastPlayed = r.date;
+      });
+
+      var stats = Object.keys(map).map(function (k) {
+        var e = map[k];
+        var sum = e.diffs.reduce(function (acc, d) { return acc + d; }, 0);
+        return {
+          name: e.name,
+          count: e.diffs.length,
+          avg: Math.round((sum / e.diffs.length) * 10) / 10,
+          best: Math.min.apply(null, e.diffs),
+          worst: Math.max.apply(null, e.diffs),
+          lastPlayed: e.lastPlayed
+        };
+      });
+
+      stats.sort(function (a, b) {
+        return (b.count - a.count) || b.lastPlayed.localeCompare(a.lastPlayed);
+      });
+      return stats;
+    },
+
+    /**
+     * Render the handicap trend as an inline SVG line chart (XSS-safe; built
+     * entirely with DOM APIs and textContent). Shows a hint when there is too
+     * little data.
+     * @param {HTMLElement} container
+     * @param {Array<{date: string, handicap: number}>} series - Oldest first
+     */
+    renderTrendChart: function (container, series) {
+      if (!container) return;
+      container.textContent = "";
+
+      if (series.length < 2) {
+        var hint = document.createElement("p");
+        hint.className = "insights-empty";
+        hint.textContent = "Play more rounds to see your handicap trend.";
+        container.appendChild(hint);
+        return;
+      }
+
+      var W = 320, H = 168;
+      var padX = 12, padT = 26, padB = 22;
+      var plotW = W - padX * 2;
+      var plotH = H - padT - padB;
+      var ns = this.SVG_NS;
+
+      var values = series.map(function (p) { return p.handicap; });
+      var minH = Math.min.apply(null, values);
+      var maxH = Math.max.apply(null, values);
+      // Breathing room so points never sit on the chart edges
+      var headroom = (maxH - minH) * 0.18 || 1;
+      minH -= headroom; maxH += headroom;
+      var range = maxH - minH;
+      var n = series.length;
+      var baseline = padT + plotH;
+
+      function xAt(i) { return padX + plotW * (i / (n - 1)); }
+      // Larger handicap higher on screen → improvement (decreasing) trends downward
+      function yAt(h) { return padT + plotH * (1 - (h - minH) / range); }
+
+      // Small helper to create namespaced SVG elements with attributes
+      function el(name, attrs, cls) {
+        var e = document.createElementNS(ns, name);
+        if (cls) e.setAttribute("class", cls);
+        if (attrs) {
+          for (var k in attrs) { e.setAttribute(k, attrs[k]); }
+        }
+        return e;
+      }
+
+      var svg = el("svg", { viewBox: "0 0 " + W + " " + H }, "handicap-chart-svg");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label",
+        "Handicap trend from " + UIService.formatDate(series[0].date) +
+        " to " + UIService.formatDate(series[n - 1].date) +
+        ", " + series[0].handicap + " to " + series[n - 1].handicap);
+
+      // Gradient fill under the line
+      var defs = el("defs");
+      var grad = el("linearGradient", { id: "chart-grad", x1: "0", y1: "0", x2: "0", y2: "1" });
+      grad.appendChild(el("stop", { offset: "0", "stop-color": "#166534", "stop-opacity": "0.22" }));
+      grad.appendChild(el("stop", { offset: "1", "stop-color": "#166534", "stop-opacity": "0" }));
+      defs.appendChild(grad);
+      svg.appendChild(defs);
+
+      // Transparent backdrop dismisses the tooltip when clicked
+      var backdrop = el("rect", { x: 0, y: 0, width: W, height: H, fill: "transparent" });
+      svg.appendChild(backdrop);
+
+      var coords = series.map(function (p, i) { return { x: xAt(i), y: yAt(p.handicap) }; });
+
+      // Area fill
+      var areaD = "M " + coords[0].x + " " + baseline;
+      coords.forEach(function (c) { areaD += " L " + c.x + " " + c.y; });
+      areaD += " L " + coords[n - 1].x + " " + baseline + " Z";
+      svg.appendChild(el("path", { d: areaD, fill: "url(#chart-grad)" }, "chart-area"));
+
+      // Trend line
+      var lineD = "M " + coords[0].x + " " + coords[0].y;
+      for (var li = 1; li < n; li++) { lineD += " L " + coords[li].x + " " + coords[li].y; }
+      svg.appendChild(el("path", { d: lineD }, "chart-line"));
+
+      // Subtle date anchors at the corners (replace the horizontal axis)
+      var d0 = el("text", { x: padX, y: H - 6 }, "chart-label");
+      d0.setAttribute("text-anchor", "start");
+      d0.textContent = UIService.formatDate(series[0].date);
+      svg.appendChild(d0);
+      var d1 = el("text", { x: W - padX, y: H - 6 }, "chart-label");
+      d1.setAttribute("text-anchor", "end");
+      d1.textContent = UIService.formatDate(series[n - 1].date);
+      svg.appendChild(d1);
+
+      // Persistent label for the latest handicap (anchors the vertical scale)
+      var lastLabel = el("text", { x: coords[n - 1].x, y: coords[n - 1].y - 9 }, "chart-value-label");
+      lastLabel.setAttribute("text-anchor", "end");
+      lastLabel.textContent = String(series[n - 1].handicap);
+      svg.appendChild(lastLabel);
+
+      // Tooltip group, kept on top and hidden until a point is clicked
+      var tip = el("g", null, "chart-tooltip");
+      tip.style.display = "none";
+      var tipBg = el("rect", { rx: 4, height: 16 }, "chart-tooltip-bg");
+      var tipText = el("text", null, "chart-tooltip-text");
+      tipText.setAttribute("text-anchor", "middle");
+      tip.appendChild(tipBg);
+      tip.appendChild(tipText);
+
+      var pointEls = [];
+      var activeIdx = -1;
+
+      function hideTip() {
+        tip.style.display = "none";
+        if (activeIdx >= 0 && pointEls[activeIdx]) pointEls[activeIdx].setAttribute("r", "3");
+        activeIdx = -1;
+      }
+      function showTip(i) {
+        if (activeIdx === i) { hideTip(); return; }
+        if (activeIdx >= 0 && pointEls[activeIdx]) pointEls[activeIdx].setAttribute("r", "3");
+        var p = series[i];
+        var label = UIService.formatDate(p.date) + "   " + p.handicap;
+        tipText.textContent = label;
+        var tw = label.length * 5.1 + 14;
+        var th = 16;
+        var tx = Math.max(2, Math.min(W - tw - 2, coords[i].x - tw / 2));
+        var ty = coords[i].y - th - 9;
+        if (ty < 2) ty = coords[i].y + 9;
+        tipBg.setAttribute("x", tx);
+        tipBg.setAttribute("y", ty);
+        tipBg.setAttribute("width", tw);
+        tipText.setAttribute("x", tx + tw / 2);
+        tipText.setAttribute("y", ty + 11);
+        tip.style.display = "";
+        pointEls[i].setAttribute("r", "4.5");
+        activeIdx = i;
+      }
+
+      backdrop.addEventListener("click", hideTip);
+
+      // Visible donut points plus a generous invisible hit target for tapping
+      coords.forEach(function (c, i) {
+        var dot = el("circle", { cx: c.x, cy: c.y, r: 3 }, "chart-point");
+        var hit = el("circle", { cx: c.x, cy: c.y, r: 12, fill: "transparent" }, "chart-hit");
+        hit.addEventListener("click", function (ev) { ev.stopPropagation(); showTip(i); });
+        pointEls.push(dot);
+        svg.appendChild(dot);
+        svg.appendChild(hit);
+      });
+
+      svg.appendChild(tip);
+      container.appendChild(svg);
+    },
+
+    /**
+     * Render per-course statistics as a table (XSS-safe via textContent).
+     * @param {HTMLElement} container
+     * @param {Array<Object>} stats
+     */
+    renderCourseStats: function (container, stats) {
+      if (!container) return;
+      container.textContent = "";
+
+      if (stats.length === 0) {
+        var hint = document.createElement("p");
+        hint.className = "insights-empty";
+        hint.textContent = "Add course names to your rounds to see course statistics.";
+        container.appendChild(hint);
+        return;
+      }
+
+      var table = document.createElement("table");
+      table.className = "course-stats-table";
+
+      var thead = document.createElement("thead");
+      var headRow = document.createElement("tr");
+      ["Course", "Rounds", "Avg", "Best", "Worst"].forEach(function (h, idx) {
+        var th = document.createElement("th");
+        th.textContent = h;
+        if (idx > 0) th.className = "num";
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      var tbody = document.createElement("tbody");
+      stats.forEach(function (s) {
+        var tr = document.createElement("tr");
+
+        var nameCell = document.createElement("td");
+        nameCell.textContent = s.name;
+        nameCell.className = "course-stats-name";
+        tr.appendChild(nameCell);
+
+        [s.count, s.avg, s.best, s.worst].forEach(function (val) {
+          var td = document.createElement("td");
+          td.className = "num";
+          td.textContent = String(val);
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      container.appendChild(table);
     }
   };
 
@@ -867,14 +1246,25 @@ if ('serviceWorker' in navigator) {
   // ============================================================================
 
   var App = {
+    scoringMethod: "gross",
+
     elements: {
       form: null,
       roundDateInput: null,
       grossScoreInput: null,
+      grossScoreLabel: null,
       courseRatingInput: null,
       slopeInput: null,
       courseNameInput: null,
+      noteInput: null,
+      methodGrossButton: null,
+      methodStablefordButton: null,
+      stablefordRow: null,
+      stablefordPointsInput: null,
+      nineHoleRow: null,
       nineHoleInput: null,
+      hcpiRow: null,
+      hcpiHintText: null,
       hcpiInput: null,
       resultContainer: null,
       handicapValue: null,
@@ -886,7 +1276,9 @@ if ('serviceWorker' in navigator) {
       exportButton: null,
       importButton: null,
       importFileInput: null,
-      importStatus: null
+      importStatus: null,
+      handicapChart: null,
+      courseStats: null
     },
 
     /**
@@ -896,10 +1288,19 @@ if ('serviceWorker' in navigator) {
       this.elements.form = document.getElementById("handicap-form");
       this.elements.roundDateInput = document.getElementById("round-date");
       this.elements.grossScoreInput = document.getElementById("gross-score");
+      this.elements.grossScoreLabel = document.getElementById("gross-score-label");
       this.elements.courseRatingInput = document.getElementById("course-rating");
       this.elements.slopeInput = document.getElementById("slope-rating");
       this.elements.courseNameInput = document.getElementById("course-name");
+      this.elements.noteInput = document.getElementById("round-note");
+      this.elements.methodGrossButton = document.getElementById("method-gross");
+      this.elements.methodStablefordButton = document.getElementById("method-stableford");
+      this.elements.stablefordRow = document.getElementById("stableford-row");
+      this.elements.stablefordPointsInput = document.getElementById("stableford-points");
+      this.elements.nineHoleRow = document.getElementById("nine-hole-row");
       this.elements.nineHoleInput = document.getElementById("nine-hole");
+      this.elements.hcpiRow = document.getElementById("hcpi-row");
+      this.elements.hcpiHintText = document.getElementById("hcpi-hint-text");
       this.elements.hcpiInput = document.getElementById("hcpi-input");
       this.elements.resultContainer = document.getElementById("result");
       this.elements.handicapValue = document.getElementById("handicap-value");
@@ -912,9 +1313,14 @@ if ('serviceWorker' in navigator) {
       this.elements.importButton = document.getElementById("import-data");
       this.elements.importFileInput = document.getElementById("import-file-input");
       this.elements.importStatus = document.getElementById("import-status");
+      this.elements.handicapChart = document.getElementById("handicap-chart");
+      this.elements.courseStats = document.getElementById("course-stats");
 
       // Export/import elements are optional — exclude from required check
-      var optionalElements = ["exportButton", "importButton", "importFileInput", "importStatus"];
+      var optionalElements = ["exportButton", "importButton", "importFileInput", "importStatus",
+        "grossScoreLabel", "noteInput", "methodGrossButton", "methodStablefordButton",
+        "stablefordRow", "stablefordPointsInput", "nineHoleRow", "hcpiRow", "hcpiHintText",
+        "handicapChart", "courseStats"];
       var missingElements = [];
       for (var key in this.elements) {
         if (!this.elements[key] && optionalElements.indexOf(key) === -1) {
@@ -930,6 +1336,17 @@ if ('serviceWorker' in navigator) {
       this.elements.deleteAllButton.addEventListener("click", this.handleDeleteAll.bind(this));
       this.elements.nineHoleInput.addEventListener("change", this.handleNineHoleToggle.bind(this));
       this.elements.addRoundButton.addEventListener("click", this.showAddRoundCard.bind(this));
+
+      if (this.elements.methodGrossButton && this.elements.methodStablefordButton) {
+        var appRef = this;
+        this.elements.methodGrossButton.addEventListener("click", function () {
+          appRef.setScoringMethod("gross");
+        });
+        this.elements.methodStablefordButton.addEventListener("click", function () {
+          appRef.setScoringMethod("stableford");
+        });
+      }
+
 
       if (this.elements.exportButton) {
         this.elements.exportButton.addEventListener("click", this.handleExport.bind(this));
@@ -968,13 +1385,16 @@ if ('serviceWorker' in navigator) {
       event.preventDefault();
       UIService.clearResult(this.elements.resultContainer);
 
+      var isStableford = this.scoringMethod === "stableford";
       var dateRaw = this.elements.roundDateInput.value;
-      var scoreRaw = this.elements.grossScoreInput.value;
       var courseRatingRaw = this.elements.courseRatingInput.value;
       var slopeRaw = this.elements.slopeInput.value;
       var courseNameRaw = this.elements.courseNameInput.value.trim().slice(0, 80);
+      var noteRaw = this.elements.noteInput ? this.elements.noteInput.value.trim().slice(0, 280) : "";
+      // 9-hole applies to both Gross Score and Stableford rounds
       var isNineHole = this.elements.nineHoleInput.checked;
 
+      // --- Common validations: date, course rating, slope ---
       var dateValidation = ValidationService.validateDate(dateRaw);
       if (!dateValidation.valid) {
         UIService.showError(this.elements.resultContainer, dateValidation.error);
@@ -983,15 +1403,6 @@ if ('serviceWorker' in navigator) {
         return;
       }
       this.elements.roundDateInput.removeAttribute("aria-invalid");
-
-      var scoreValidation = ValidationService.validateScore(scoreRaw, isNineHole);
-      if (!scoreValidation.valid) {
-        UIService.showError(this.elements.resultContainer, scoreValidation.error);
-        this.elements.grossScoreInput.setAttribute("aria-invalid", "true");
-        this.elements.grossScoreInput.focus();
-        return;
-      }
-      this.elements.grossScoreInput.removeAttribute("aria-invalid");
 
       var courseRatingValidation = ValidationService.validateCourseRating(courseRatingRaw, isNineHole);
       if (!courseRatingValidation.valid) {
@@ -1011,37 +1422,93 @@ if ('serviceWorker' in navigator) {
       }
       this.elements.slopeInput.removeAttribute("aria-invalid");
 
-      var scoreDifferential = WHSService.calculateScoreDifferential(
-        scoreValidation.value,
-        courseRatingValidation.value,
-        slopeValidation.value
-      );
-      // For 9-hole rounds, combine with expected SD using official WHS formula
-      if (isNineHole) {
-        var hcpiValidation = ValidationService.validateHcpi(this.elements.hcpiInput.value);
-        if (!hcpiValidation.valid) {
-          UIService.showError(this.elements.resultContainer, hcpiValidation.error);
+      var scoreDifferential;
+      var newRound = {
+        id: String(Date.now()),
+        date: dateRaw.trim(),
+        score: null,
+        courseRating: courseRatingValidation.value,
+        slope: slopeValidation.value,
+        differential: 0,
+        courseName: courseNameRaw || null,
+        isNineHole: isNineHole,
+        scoringMethod: this.scoringMethod,
+        stablefordPoints: null,
+        hcpiUsed: null,
+        note: noteRaw || null,
+        excludeFromHandicap: false
+      };
+
+      if (isStableford) {
+        // --- Stableford branch: points + Handicap Index ---
+        var pointsValidation = ValidationService.validateStablefordPoints(this.elements.stablefordPointsInput.value, isNineHole);
+        if (!pointsValidation.valid) {
+          UIService.showError(this.elements.resultContainer, pointsValidation.error);
+          this.elements.stablefordPointsInput.setAttribute("aria-invalid", "true");
+          this.elements.stablefordPointsInput.focus();
+          return;
+        }
+        this.elements.stablefordPointsInput.removeAttribute("aria-invalid");
+
+        var sbHcpiValidation = ValidationService.validateHcpi(this.elements.hcpiInput.value);
+        if (!sbHcpiValidation.valid) {
+          UIService.showError(this.elements.resultContainer, sbHcpiValidation.error);
           this.elements.hcpiInput.setAttribute("aria-invalid", "true");
           this.elements.hcpiInput.focus();
           return;
         }
         this.elements.hcpiInput.removeAttribute("aria-invalid");
-        var expectedSD = WHSService.calculateExpectedNineHoleSD(hcpiValidation.value);
-        scoreDifferential = Math.round((scoreDifferential + expectedSD) * 10) / 10;
+
+        scoreDifferential = isNineHole
+          ? WHSService.calculateNineHoleStablefordDifferential(
+              pointsValidation.value,
+              slopeValidation.value,
+              sbHcpiValidation.value
+            )
+          : WHSService.calculateStablefordDifferential(
+              pointsValidation.value,
+              slopeValidation.value,
+              sbHcpiValidation.value
+            );
+        newRound.stablefordPoints = pointsValidation.value;
+        newRound.hcpiUsed = sbHcpiValidation.value;
+      } else {
+        // --- Gross score branch ---
+        var scoreValidation = ValidationService.validateScore(this.elements.grossScoreInput.value, isNineHole);
+        if (!scoreValidation.valid) {
+          UIService.showError(this.elements.resultContainer, scoreValidation.error);
+          this.elements.grossScoreInput.setAttribute("aria-invalid", "true");
+          this.elements.grossScoreInput.focus();
+          return;
+        }
+        this.elements.grossScoreInput.removeAttribute("aria-invalid");
+
+        scoreDifferential = WHSService.calculateScoreDifferential(
+          scoreValidation.value,
+          courseRatingValidation.value,
+          slopeValidation.value
+        );
+        // For 9-hole rounds, combine with expected SD using official WHS formula
+        if (isNineHole) {
+          var hcpiValidation = ValidationService.validateHcpi(this.elements.hcpiInput.value);
+          if (!hcpiValidation.valid) {
+            UIService.showError(this.elements.resultContainer, hcpiValidation.error);
+            this.elements.hcpiInput.setAttribute("aria-invalid", "true");
+            this.elements.hcpiInput.focus();
+            return;
+          }
+          this.elements.hcpiInput.removeAttribute("aria-invalid");
+          var expectedSD = WHSService.calculateExpectedNineHoleSD(hcpiValidation.value);
+          scoreDifferential = Math.round((scoreDifferential + expectedSD) * 10) / 10;
+          newRound.hcpiUsed = hcpiValidation.value;
+        }
+        newRound.score = scoreValidation.value;
       }
+
+      newRound.differential = scoreDifferential;
       UIService.showResult(this.elements.resultContainer, scoreDifferential);
 
       var rounds = StorageService.loadRounds();
-      var newRound = {
-        id: String(Date.now()),
-        date: dateRaw.trim(),
-        score: scoreValidation.value,
-        courseRating: courseRatingValidation.value,
-        slope: slopeValidation.value,
-        differential: scoreDifferential,
-        courseName: courseNameRaw || null,
-        isNineHole: isNineHole
-      };
       rounds.unshift(newRound);
       var saveResult = StorageService.saveRounds(rounds);
       if (!saveResult.success) {
@@ -1055,6 +1522,88 @@ if ('serviceWorker' in navigator) {
       }
 
       this.updateUI();
+    },
+
+    /**
+     * Switch the input form between Gross Score and Stableford scoring.
+     * @param {string} method - "gross" or "stableford"
+     */
+    setScoringMethod: function (method) {
+      this.scoringMethod = method === "stableford" ? "stableford" : "gross";
+      var isStableford = this.scoringMethod === "stableford";
+
+      if (this.elements.methodGrossButton) {
+        this.elements.methodGrossButton.classList.toggle("active", !isStableford);
+        this.elements.methodGrossButton.setAttribute("aria-pressed", String(!isStableford));
+      }
+      if (this.elements.methodStablefordButton) {
+        this.elements.methodStablefordButton.classList.toggle("active", isStableford);
+        this.elements.methodStablefordButton.setAttribute("aria-pressed", String(isStableford));
+      }
+
+      if (this.elements.grossScoreLabel) this.elements.grossScoreLabel.style.display = isStableford ? "none" : "";
+      this.elements.grossScoreInput.style.display = isStableford ? "none" : "";
+      if (this.elements.stablefordRow) this.elements.stablefordRow.style.display = isStableford ? "" : "none";
+      // The 9-hole toggle stays visible for both scoring methods; its checked
+      // state is preserved when switching between them.
+      if (isStableford) {
+        this.elements.grossScoreInput.removeAttribute("aria-invalid");
+      } else {
+        if (this.elements.stablefordPointsInput) this.elements.stablefordPointsInput.removeAttribute("aria-invalid");
+      }
+
+      this.updateHcpiRowVisibility();
+    },
+
+    /**
+     * Show the Handicap Index row when it is needed (Stableford rounds, or
+     * 9-hole rounds) and update its hint text. Pre-fills the current handicap.
+     */
+    updateHcpiRowVisibility: function () {
+      var needHcpi = this.scoringMethod === "stableford" || this.elements.nineHoleInput.checked;
+      if (this.elements.hcpiRow) {
+        this.elements.hcpiRow.style.display = needHcpi ? "" : "none";
+      }
+      // In Stableford mode, hint the expected reference: 18 points for 9 holes,
+      // 36 points for 18 holes (playing exactly to handicap).
+      if (this.elements.stablefordPointsInput) {
+        this.elements.stablefordPointsInput.placeholder =
+          this.elements.nineHoleInput.checked ? "e.g. 18" : "e.g. 36";
+      }
+      if (this.elements.hcpiHintText) {
+        this.elements.hcpiHintText.textContent = this.scoringMethod === "stableford"
+          ? "(for Stableford calculation)"
+          : "(for 9-hole calculation)";
+      }
+      if (needHcpi) {
+        this.prefillHcpi();
+      } else {
+        this.elements.hcpiInput.value = "";
+        this.elements.hcpiInput.removeAttribute("aria-invalid");
+      }
+    },
+
+    /**
+     * Pre-fill the Handicap Index field with the current calculated handicap,
+     * if the field is empty and a handicap is available.
+     */
+    prefillHcpi: function () {
+      if (this.elements.hcpiInput.value) return;
+      var info = WHSService.getHandicapInfo(this.getHandicapPool());
+      if (info.handicap !== null) {
+        this.elements.hcpiInput.value = String(info.handicap);
+      }
+    },
+
+    /**
+     * Return the rounds eligible for the handicap calculation (those not
+     * excluded), sorted newest first.
+     * @returns {Array<Object>}
+     */
+    getHandicapPool: function () {
+      return StorageService.loadRounds()
+        .filter(function (r) { return !r.excludeFromHandicap; })
+        .sort(function (a, b) { return b.date.localeCompare(a.date); });
     },
 
     /**
@@ -1077,25 +1626,7 @@ if ('serviceWorker' in navigator) {
      * Show/hide and pre-fill the HCPI field when the 9-hole checkbox changes.
      */
     handleNineHoleToggle: function () {
-      var hcpiRow = document.getElementById("nine-hole-hcpi-row");
-      if (this.elements.nineHoleInput.checked) {
-        hcpiRow.style.display = "";
-        // Pre-fill with current handicap index if available
-        if (!this.elements.hcpiInput.value) {
-          var rounds = StorageService.loadRounds();
-          var newestFirst = rounds.slice().sort(function (a, b) {
-            return b.date.localeCompare(a.date);
-          });
-          var info = WHSService.getHandicapInfo(newestFirst);
-          if (info.handicap !== null) {
-            this.elements.hcpiInput.value = String(info.handicap);
-          }
-        }
-      } else {
-        hcpiRow.style.display = "none";
-        this.elements.hcpiInput.value = "";
-        this.elements.hcpiInput.removeAttribute("aria-invalid");
-      }
+      this.updateHcpiRowVisibility();
     },
 
     /**
@@ -1115,13 +1646,13 @@ if ('serviceWorker' in navigator) {
     },
 
     /**
-     * Show an editable card at the top of the rounds list for manual round entry.
-     * Only one editable card can be open at a time.
+     * Build an editable card for adding or editing a round.
+     * @param {Object|null} existingRound - Round to edit, or null for a new entry
+     * @returns {HTMLElement} The editable card element
      */
-    showAddRoundCard: function () {
-      if (document.getElementById("add-round-card")) return;
-
+    createEditableCard: function (existingRound) {
       var app = this;
+      var isEdit = !!existingRound;
 
       // Helper: build a labeled input row
       function makeRow(labelText, inputId, type, placeholder, step) {
@@ -1140,50 +1671,109 @@ if ('serviceWorker' in navigator) {
         return row;
       }
 
+      function todayISO() {
+        var t = new Date();
+        return t.getFullYear() + "-" +
+          String(t.getMonth() + 1).padStart(2, "0") + "-" +
+          String(t.getDate()).padStart(2, "0");
+      }
+
       var card = document.createElement("div");
       card.className = "round-card-editable";
-      card.id = "add-round-card";
+      card.id = "edit-round-card";
       card.setAttribute("role", "form");
-      card.setAttribute("aria-label", "Add historic round");
+      card.setAttribute("aria-label", isEdit ? "Edit round" : "Add historic round");
 
-      // Date (optional – defaults to today)
-      var dateRow = makeRow("Date (optional, defaults to today)", "add-date", "date", "");
-      var today = new Date();
-      dateRow.querySelector("input").value =
-        today.getFullYear() + "-" +
-        String(today.getMonth() + 1).padStart(2, "0") + "-" +
-        String(today.getDate()).padStart(2, "0");
+      var dateRow = makeRow(isEdit ? "Date" : "Date (optional, defaults to today)", "edit-date", "date", "");
+      dateRow.querySelector("input").value = isEdit ? existingRound.date : todayISO();
 
-      // Course name (optional) – shown first so autocomplete can pre-fill CR/Slope
-      var courseNameRow = makeRow("Course Name (optional)", "add-course-name", "text", "e.g. Augusta National");
+      // Course name first so autocomplete can pre-fill CR/Slope
+      var courseNameRow = makeRow("Course Name (optional)", "edit-course-name", "text", "e.g. Augusta National");
       courseNameRow.querySelector("input").setAttribute("autocomplete", "off");
 
-      // Score differential (required)
-      var diffRow = makeRow("Score Differential", "add-differential", "number", "e.g. 12.3", 0.1);
-
-      // Optional fields
-      var scoreRow = makeRow("Gross Score (optional)", "add-score", "number", "e.g. 85");
-      var crRow = makeRow("Course Rating (optional)", "add-cr", "number", "e.g. 72.5", 0.1);
-      var slopeRow = makeRow("Slope Rating (optional)", "add-slope", "number", "e.g. 128");
+      // Stableford rounds are edited via points + Handicap Index (the
+      // differential is recomputed); gross/manual rounds edit the differential
+      // directly. This keeps the edit UX aligned with the entry form.
+      var isStableford = isEdit && existingRound.scoringMethod === "stableford";
+      var pointsRow, hcpiRow, diffRow, scoreRow;
+      if (isStableford) {
+        pointsRow = makeRow("Stableford Points", "edit-points", "number", "e.g. 36", 1);
+        hcpiRow = makeRow("Handicap Index", "edit-hcpi", "number", "e.g. 18.0", 0.1);
+      } else {
+        diffRow = makeRow("Score Differential", "edit-differential", "number", "e.g. 12.3", 0.1);
+        scoreRow = makeRow("Gross Score (optional)", "edit-score", "number", "e.g. 85");
+      }
+      var crRow = makeRow("Course Rating (optional)", "edit-cr", "number", "e.g. 72.5", 0.1);
+      var slopeRow = makeRow(isStableford ? "Slope Rating" : "Slope Rating (optional)", "edit-slope", "number", "e.g. 128");
+      var noteRow = makeRow("Note (optional)", "edit-note", "text", "e.g. windy, played with John");
 
       // 9-hole checkbox
       var nineHoleRow = document.createElement("div");
       nineHoleRow.className = "nine-hole-row";
       var nineHoleCb = document.createElement("input");
       nineHoleCb.type = "checkbox";
-      nineHoleCb.id = "add-nine-hole";
+      nineHoleCb.id = "edit-nine-hole";
       var nineHoleLbl = document.createElement("label");
-      nineHoleLbl.setAttribute("for", "add-nine-hole");
+      nineHoleLbl.setAttribute("for", "edit-nine-hole");
       nineHoleLbl.textContent = "9-hole round";
       nineHoleRow.appendChild(nineHoleCb);
       nineHoleRow.appendChild(nineHoleLbl);
 
-      // Inline error message
+      // Count-for-handicap checkbox
+      var countRow = document.createElement("div");
+      countRow.className = "nine-hole-row";
+      var countCb = document.createElement("input");
+      countCb.type = "checkbox";
+      countCb.id = "edit-count";
+      var countLbl = document.createElement("label");
+      countLbl.setAttribute("for", "edit-count");
+      countLbl.textContent = "Count for handicap";
+      countRow.appendChild(countCb);
+      countRow.appendChild(countLbl);
+
+      // Pre-fill values when editing
+      if (isEdit) {
+        courseNameRow.querySelector("input").value = existingRound.courseName || "";
+        if (isStableford) {
+          if (existingRound.stablefordPoints !== null && existingRound.stablefordPoints !== undefined) {
+            pointsRow.querySelector("input").value = String(existingRound.stablefordPoints);
+          }
+          if (existingRound.hcpiUsed !== null && existingRound.hcpiUsed !== undefined) {
+            hcpiRow.querySelector("input").value = String(existingRound.hcpiUsed);
+          }
+        } else {
+          diffRow.querySelector("input").value = String(existingRound.differential);
+          if (existingRound.score !== null && existingRound.score !== undefined) {
+            scoreRow.querySelector("input").value = String(existingRound.score);
+          }
+        }
+        if (existingRound.courseRating !== null && existingRound.courseRating !== undefined) {
+          crRow.querySelector("input").value = String(existingRound.courseRating);
+        }
+        if (existingRound.slope !== null && existingRound.slope !== undefined) {
+          slopeRow.querySelector("input").value = String(existingRound.slope);
+        }
+        noteRow.querySelector("input").value = existingRound.note || "";
+        nineHoleCb.checked = !!existingRound.isNineHole;
+      }
+      // New rounds count by default; for edits, reflect the stored flag
+      countCb.checked = isEdit ? !existingRound.excludeFromHandicap : true;
+
+      // For Stableford edits, hint the expected reference (18 pts for 9 holes,
+      // 36 for 18 holes) and keep it in sync with the 9-hole toggle.
+      if (isStableford) {
+        var pointsInputEl = pointsRow.querySelector("input");
+        var syncPointsHint = function () {
+          pointsInputEl.placeholder = nineHoleCb.checked ? "e.g. 18" : "e.g. 36";
+        };
+        syncPointsHint();
+        nineHoleCb.addEventListener("change", syncPointsHint);
+      }
+
       var errorEl = document.createElement("p");
       errorEl.className = "add-round-error";
       errorEl.style.display = "none";
 
-      // Save / Cancel buttons
       var actionsDiv = document.createElement("div");
       actionsDiv.className = "round-card-editable-actions";
       var saveBtn = document.createElement("button");
@@ -1199,65 +1789,98 @@ if ('serviceWorker' in navigator) {
 
       card.appendChild(dateRow);
       card.appendChild(courseNameRow);
-      card.appendChild(diffRow);
-      card.appendChild(scoreRow);
+      if (isStableford) {
+        card.appendChild(pointsRow);
+        card.appendChild(hcpiRow);
+      } else {
+        card.appendChild(diffRow);
+        card.appendChild(scoreRow);
+      }
       card.appendChild(crRow);
       card.appendChild(slopeRow);
+      card.appendChild(noteRow);
       card.appendChild(nineHoleRow);
+      card.appendChild(countRow);
       card.appendChild(errorEl);
       card.appendChild(actionsDiv);
 
-      // Insert at top of rounds list
-      this.elements.roundsList.prepend(card);
-
-      // Attach autocomplete to the course name field in the editable card
-      CourseService.attachAutocomplete(
-        document.getElementById("add-course-name"),
-        document.getElementById("add-cr"),
-        document.getElementById("add-slope")
-      );
-
-      document.getElementById("add-differential").focus();
-
       cancelBtn.addEventListener("click", function () {
-        card.remove();
+        // Re-render to restore the original card (edit) or simply remove (add)
+        app.updateUI();
       });
 
       saveBtn.addEventListener("click", function () {
-        app.handleSaveManualRound(card, errorEl);
+        app.saveEditableCard(card, errorEl, existingRound);
       });
+
+      return card;
     },
 
     /**
-     * Validate and save a manually entered round from the editable card.
+     * Show an editable card at the top of the rounds list for manual round entry.
+     * Only one editable card can be open at a time.
+     */
+    showAddRoundCard: function () {
+      if (this.elements.roundsList.querySelector(".round-card-editable")) return;
+
+      var card = this.createEditableCard(null);
+      this.elements.roundsList.prepend(card);
+
+      CourseService.attachAutocomplete(
+        document.getElementById("edit-course-name"),
+        document.getElementById("edit-cr"),
+        document.getElementById("edit-slope")
+      );
+
+      document.getElementById("edit-differential").focus();
+    },
+
+    /**
+     * Replace a displayed round card with an editable card for in-place editing.
+     * @param {string} roundId - Round id
+     */
+    openEditRound: function (roundId) {
+      if (this.elements.roundsList.querySelector(".round-card-editable")) return;
+
+      var round = StorageService.loadRounds().filter(function (r) {
+        return r.id === roundId;
+      })[0];
+      if (!round) return;
+
+      var target = this.elements.roundsList.querySelector('[data-id="' + roundId + '"]');
+      if (!target) return;
+
+      var card = this.createEditableCard(round);
+      this.elements.roundsList.replaceChild(card, target);
+
+      CourseService.attachAutocomplete(
+        document.getElementById("edit-course-name"),
+        document.getElementById("edit-cr"),
+        document.getElementById("edit-slope")
+      );
+
+      var focusEl = document.getElementById("edit-points") || document.getElementById("edit-differential");
+      if (focusEl) focusEl.focus();
+    },
+
+    /**
+     * Validate and save the editable card (handles both add and edit).
      * @param {HTMLElement} card - The editable card element
      * @param {HTMLElement} errorEl - Inline error paragraph
+     * @param {Object|null} existingRound - Round being edited, or null for a new entry
      */
-    handleSaveManualRound: function (card, errorEl) {
-      var dateInput = document.getElementById("add-date");
-      var diffInput = document.getElementById("add-differential");
-      var scoreInput = document.getElementById("add-score");
-      var crInput = document.getElementById("add-cr");
-      var slopeInput = document.getElementById("add-slope");
-      var courseNameInput = document.getElementById("add-course-name");
-      var nineHoleCb = document.getElementById("add-nine-hole");
+    saveEditableCard: function (card, errorEl, existingRound) {
+      var isEdit = !!existingRound;
+      var isStableford = isEdit && existingRound.scoringMethod === "stableford";
+      var dateInput = document.getElementById("edit-date");
+      var crInput = document.getElementById("edit-cr");
+      var slopeInput = document.getElementById("edit-slope");
+      var courseNameInput = document.getElementById("edit-course-name");
+      var noteInput = document.getElementById("edit-note");
+      var nineHoleCb = document.getElementById("edit-nine-hole");
+      var countCb = document.getElementById("edit-count");
 
-      // Score differential is required
-      var diffRaw = diffInput.value;
-      if (diffRaw === "" || diffRaw === null || diffRaw === undefined) {
-        errorEl.textContent = "Score Differential is required.";
-        errorEl.style.display = "";
-        diffInput.focus();
-        return;
-      }
-      var diff = parseFloat(diffRaw);
-      if (isNaN(diff) || !isFinite(diff) || diff < -10 || diff > 60) {
-        errorEl.textContent = "Score Differential must be a number between -10 and 60.";
-        errorEl.style.display = "";
-        diffInput.focus();
-        return;
-      }
-      diff = Math.round(diff * 10) / 10;
+      errorEl.style.display = "none";
 
       // Date is optional – defaults to today
       var dateRaw = dateInput.value;
@@ -1278,29 +1901,96 @@ if ('serviceWorker' in navigator) {
         date = dateRaw.trim();
       }
 
-      // Optional numeric fields
-      var score = scoreInput.value !== "" ? parseInt(scoreInput.value, 10) : null;
-      var courseRating = crInput.value !== "" ? parseFloat(crInput.value) : null;
-      var slope = slopeInput.value !== "" ? parseInt(slopeInput.value, 10) : null;
+      // Common fields
       var courseName = courseNameInput.value.trim().slice(0, 80) || null;
+      var note = noteInput.value.trim().slice(0, 280) || null;
       var isNineHole = nineHoleCb.checked;
+      var excludeFromHandicap = !countCb.checked;
+      var courseRating = crInput.value !== "" ? parseFloat(crInput.value) : null;
 
-      errorEl.style.display = "none";
-
-      var newRound = {
-        id: String(Date.now()),
+      var round = {
+        id: isEdit ? existingRound.id : String(Date.now()),
         date: date,
-        score: score,
+        score: null,
         courseRating: courseRating,
-        slope: slope,
-        differential: diff,
+        slope: null,
+        differential: 0,
         courseName: courseName,
         isNineHole: isNineHole,
-        manualEntry: true
+        note: note,
+        excludeFromHandicap: excludeFromHandicap,
+        scoringMethod: "gross",
+        stablefordPoints: null,
+        hcpiUsed: isEdit ? (existingRound.hcpiUsed || null) : null,
+        manualEntry: isEdit ? existingRound.manualEntry === true : true
       };
 
+      if (isStableford) {
+        // --- Stableford edit: recompute the differential from points + index ---
+        var pointsInput = document.getElementById("edit-points");
+        var hcpiInput = document.getElementById("edit-hcpi");
+
+        var slopeV = ValidationService.validateSlope(slopeInput.value);
+        if (!slopeV.valid) {
+          errorEl.textContent = slopeV.error;
+          errorEl.style.display = "";
+          slopeInput.focus();
+          return;
+        }
+        var pointsV = ValidationService.validateStablefordPoints(pointsInput.value, isNineHole);
+        if (!pointsV.valid) {
+          errorEl.textContent = pointsV.error;
+          errorEl.style.display = "";
+          pointsInput.focus();
+          return;
+        }
+        var hcpiV = ValidationService.validateHcpi(hcpiInput.value);
+        if (!hcpiV.valid) {
+          errorEl.textContent = hcpiV.error;
+          errorEl.style.display = "";
+          hcpiInput.focus();
+          return;
+        }
+
+        round.slope = slopeV.value;
+        round.differential = isNineHole
+          ? WHSService.calculateNineHoleStablefordDifferential(pointsV.value, slopeV.value, hcpiV.value)
+          : WHSService.calculateStablefordDifferential(pointsV.value, slopeV.value, hcpiV.value);
+        round.scoringMethod = "stableford";
+        round.stablefordPoints = pointsV.value;
+        round.hcpiUsed = hcpiV.value;
+      } else {
+        // --- Gross / manual edit: differential is entered directly ---
+        var diffInput = document.getElementById("edit-differential");
+        var scoreInput = document.getElementById("edit-score");
+
+        var diffRaw = diffInput.value;
+        if (diffRaw === "" || diffRaw === null || diffRaw === undefined) {
+          errorEl.textContent = "Score Differential is required.";
+          errorEl.style.display = "";
+          diffInput.focus();
+          return;
+        }
+        var diff = parseFloat(diffRaw);
+        if (isNaN(diff) || !isFinite(diff) || diff < -10 || diff > 60) {
+          errorEl.textContent = "Score Differential must be a number between -10 and 60.";
+          errorEl.style.display = "";
+          diffInput.focus();
+          return;
+        }
+        round.differential = Math.round(diff * 10) / 10;
+        round.score = scoreInput.value !== "" ? parseInt(scoreInput.value, 10) : null;
+        round.slope = slopeInput.value !== "" ? parseInt(slopeInput.value, 10) : null;
+      }
+
       var rounds = StorageService.loadRounds();
-      rounds.push(newRound);
+      if (isEdit) {
+        rounds = rounds.map(function (r) {
+          return r.id === round.id ? round : r;
+        });
+      } else {
+        rounds.push(round);
+      }
       var saveResult = StorageService.saveRounds(rounds);
       if (!saveResult.success) {
         errorEl.textContent = saveResult.error;
@@ -1309,65 +1999,115 @@ if ('serviceWorker' in navigator) {
       }
 
       // Silently save the course to the user's course book for future autocomplete
-      if (courseName && courseRating !== null && slope !== null) {
-        CourseService.saveUserCourse(courseName, courseRating, slope);
+      if (courseName && round.courseRating !== null && round.slope !== null) {
+        CourseService.saveUserCourse(courseName, round.courseRating, round.slope);
       }
 
-      card.remove();
+      this.updateUI();
+    },
+
+    /**
+     * Toggle whether a round counts toward the handicap calculation.
+     * @param {string} roundId - Round id
+     */
+    toggleRoundExclusion: function (roundId) {
+      var rounds = StorageService.loadRounds().map(function (r) {
+        if (r.id === roundId) {
+          r.excludeFromHandicap = !r.excludeFromHandicap;
+        }
+        return r;
+      });
+      var saveResult = StorageService.saveRounds(rounds);
+      if (!saveResult.success) {
+        alert("Error saving: " + saveResult.error);
+        return;
+      }
       this.updateUI();
     },
 
     /**
      * Update handicap display.
+     * @param {Object} info - Result from WHSService.getHandicapInfo
      */
-    updateHandicap: function () {
-      var rounds = StorageService.loadRounds();
-      var newestFirst = rounds.slice().sort(function (a, b) {
-        return b.date.localeCompare(a.date);
-      });
-      var info = WHSService.getHandicapInfo(newestFirst);
+    updateHandicap: function (info) {
       if (info.handicap !== null) {
         this.elements.handicapValue.textContent = String(info.handicap);
         var hintText = "Based on your best " + info.bestRoundsUsed + " out of " + info.roundsUsed + " rounds";
         this.elements.handicapHint.textContent = hintText;
       } else {
         this.elements.handicapValue.textContent = "—";
-        this.elements.handicapHint.textContent = "At least 1 round required";
+        this.elements.handicapHint.textContent = "At least 1 counting round required";
       }
     },
 
     /**
      * Render the rounds list (textContent only, XSS-safe).
+     * @param {Array<Object>} roundsNewestFirst - All rounds, sorted newest first
+     * @param {Array<string>} usedRoundIds - Ids of the rounds feeding the handicap
      */
-    renderRoundsList: function () {
+    renderRoundsList: function (roundsNewestFirst, usedRoundIds) {
       this.elements.roundsList.textContent = "";
-      var rounds = StorageService.loadRounds();
-      var newestFirst = rounds.slice().sort(function (a, b) {
-        return b.date.localeCompare(a.date);
-      });
 
-      this.elements.deleteAllButton.style.display = newestFirst.length > 0 ? "" : "none";
+      this.elements.deleteAllButton.style.display = roundsNewestFirst.length > 0 ? "" : "none";
 
       var app = this;
-      newestFirst.forEach(function (round) {
+      var usedLookup = {};
+      (usedRoundIds || []).forEach(function (id) { usedLookup[id] = true; });
+
+      roundsNewestFirst.forEach(function (round) {
+        var isCounting = usedLookup[round.id] === true;
+        var isExcluded = round.excludeFromHandicap === true;
+
         var card = document.createElement("div");
         card.className = "round-card";
+        if (isCounting) card.className += " round-card-counting";
+        if (isExcluded) card.className += " round-card-excluded";
         card.setAttribute("data-id", round.id);
         card.setAttribute("role", "listitem");
+
+        // --- Header: date (+ badges) and action buttons ---
+        var header = document.createElement("div");
+        header.className = "round-card-header";
 
         var dateSpan = document.createElement("span");
         dateSpan.className = "round-card-date";
         dateSpan.textContent = UIService.formatDate(round.date);
         if (round.isNineHole) {
-          var badge = document.createElement("span");
-          badge.className = "round-card-badge";
-          badge.textContent = "9H";
-          dateSpan.appendChild(badge);
+          dateSpan.appendChild(app.makeBadge("9H"));
+        }
+        if (round.scoringMethod === "stableford") {
+          dateSpan.appendChild(app.makeBadge("Stbf"));
+        }
+        if (isCounting) {
+          dateSpan.appendChild(app.makeBadge("Counts", "round-card-badge-counts"));
+        }
+        if (isExcluded) {
+          dateSpan.appendChild(app.makeBadge("Not counted", "round-card-badge-excluded"));
         }
 
-        var differentialSpan = document.createElement("span");
-        differentialSpan.className = "round-card-differential";
-        differentialSpan.textContent = "Diff. " + String(round.differential);
+        var actions = document.createElement("div");
+        actions.className = "round-card-actions";
+
+        var countButton = document.createElement("button");
+        countButton.type = "button";
+        countButton.className = "btn-round-count" + (isExcluded ? " off" : "");
+        countButton.textContent = isExcluded ? "○" : "◉";
+        countButton.title = isExcluded ? "Excluded — click to count for handicap" : "Counting for handicap — click to exclude";
+        countButton.setAttribute("aria-label", countButton.title);
+        countButton.setAttribute("aria-pressed", String(!isExcluded));
+        countButton.addEventListener("click", function () {
+          app.toggleRoundExclusion(round.id);
+        });
+
+        var editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "btn-round-edit";
+        editButton.title = "Edit round";
+        editButton.setAttribute("aria-label", "Edit round from " + UIService.formatDate(round.date));
+        editButton.textContent = "✎";
+        editButton.addEventListener("click", function () {
+          app.openEditRound(round.id);
+        });
 
         var deleteButton = document.createElement("button");
         deleteButton.type = "button";
@@ -1379,11 +2119,25 @@ if ('serviceWorker' in navigator) {
           app.deleteRound(round.id);
         });
 
+        actions.appendChild(countButton);
+        actions.appendChild(editButton);
+        actions.appendChild(deleteButton);
+
+        header.appendChild(dateSpan);
+        header.appendChild(actions);
+
+        var differentialSpan = document.createElement("span");
+        differentialSpan.className = "round-card-differential";
+        differentialSpan.textContent = "Diff. " + String(round.differential);
+
         var details = document.createElement("div");
         details.className = "round-card-details";
         var detailsParts = [];
         if (round.courseName) {
           detailsParts.push(round.courseName);
+        }
+        if (round.scoringMethod === "stableford" && round.stablefordPoints !== null && round.stablefordPoints !== undefined) {
+          detailsParts.push("Stableford " + round.stablefordPoints);
         }
         if (round.score !== null && round.score !== undefined) {
           detailsParts.push("Score " + round.score);
@@ -1396,12 +2150,32 @@ if ('serviceWorker' in navigator) {
         }
         details.textContent = detailsParts.join(" · ");
 
-        card.appendChild(dateSpan);
+        card.appendChild(header);
         card.appendChild(differentialSpan);
-        card.appendChild(deleteButton);
         card.appendChild(details);
+
+        if (round.note) {
+          var noteEl = document.createElement("div");
+          noteEl.className = "round-card-note";
+          noteEl.textContent = round.note;
+          card.appendChild(noteEl);
+        }
+
         app.elements.roundsList.appendChild(card);
       });
+    },
+
+    /**
+     * Create a small badge span for a round card.
+     * @param {string} text - Badge text
+     * @param {string} [extraClass] - Optional extra CSS class
+     * @returns {HTMLElement}
+     */
+    makeBadge: function (text, extraClass) {
+      var badge = document.createElement("span");
+      badge.className = "round-card-badge" + (extraClass ? " " + extraClass : "");
+      badge.textContent = text;
+      return badge;
     },
 
     /**
@@ -1497,8 +2271,36 @@ if ('serviceWorker' in navigator) {
      * Update full UI (handicap + rounds list).
      */
     updateUI: function () {
-      this.updateHandicap();
-      this.renderRoundsList();
+      var allRounds = StorageService.loadRounds().slice().sort(function (a, b) {
+        return b.date.localeCompare(a.date);
+      });
+      var pool = allRounds.filter(function (r) {
+        return !r.excludeFromHandicap;
+      });
+      var info = WHSService.getHandicapInfo(pool);
+      this.updateHandicap(info);
+      this.renderRoundsList(allRounds, info.usedRoundIds || []);
+      this.renderInsights(allRounds, pool);
+    },
+
+    /**
+     * Render the analytics insights (handicap trend + course statistics).
+     * @param {Array<Object>} allRounds - All rounds, newest first
+     * @param {Array<Object>} pool - Handicap-eligible rounds, newest first
+     */
+    renderInsights: function (allRounds, pool) {
+      if (this.elements.handicapChart) {
+        AnalyticsService.renderTrendChart(
+          this.elements.handicapChart,
+          AnalyticsService.computeHandicapTrend(pool)
+        );
+      }
+      if (this.elements.courseStats) {
+        AnalyticsService.renderCourseStats(
+          this.elements.courseStats,
+          AnalyticsService.computeCourseStats(allRounds)
+        );
+      }
     }
   };
 

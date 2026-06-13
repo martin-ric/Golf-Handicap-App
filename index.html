@@ -34,8 +34,18 @@
         <input type="text" id="course-name" name="course-name" maxlength="80" placeholder="e.g. Augusta National" autocomplete="off">
       </div>
 
-      <label for="gross-score">Gross Score</label>
+      <div class="scoring-method-toggle" role="group" aria-label="Scoring method">
+        <button type="button" id="method-gross" class="scoring-method-btn active" data-method="gross" aria-pressed="true">Gross Score</button>
+        <button type="button" id="method-stableford" class="scoring-method-btn" data-method="stableford" aria-pressed="false">Stableford</button>
+      </div>
+
+      <label for="gross-score" id="gross-score-label">Gross Score</label>
       <input type="number" id="gross-score" name="gross-score" min="1" max="200" placeholder="e.g. 85" required aria-describedby="result">
+
+      <div id="stableford-row" style="display:none">
+        <label for="stableford-points">Stableford Points</label>
+        <input type="number" id="stableford-points" name="stableford-points" min="0" max="90" step="1" placeholder="e.g. 36" aria-describedby="result">
+      </div>
 
       <label for="course-rating">Course Rating</label>
       <input type="number" id="course-rating" name="course-rating" step="0.1" min="50" max="80" placeholder="e.g. 72.5" required aria-describedby="result">
@@ -43,13 +53,16 @@
       <label for="slope-rating">Slope Rating</label>
       <input type="number" id="slope-rating" name="slope-rating" min="55" max="155" placeholder="e.g. 128" required aria-describedby="result">
 
-      <div class="nine-hole-row">
+      <label for="round-note">Note <span class="optional">(optional)</span></label>
+      <input type="text" id="round-note" name="round-note" maxlength="280" placeholder="e.g. windy, played with John">
+
+      <div class="nine-hole-row" id="nine-hole-row">
         <input type="checkbox" id="nine-hole" name="nine-hole">
         <label for="nine-hole">9-hole round</label>
       </div>
 
-      <div id="nine-hole-hcpi-row" style="display:none">
-        <label for="hcpi-input">Handicap Index <span class="optional">(for 9-hole calculation)</span></label>
+      <div id="hcpi-row" style="display:none">
+        <label for="hcpi-input">Handicap Index <span class="optional" id="hcpi-hint-text">(for 9-hole calculation)</span></label>
         <input type="number" id="hcpi-input" name="hcpi-input" step="0.1" min="-6.0" max="54.0" placeholder="e.g. 18.0" aria-describedby="result">
       </div>
 
@@ -80,6 +93,20 @@
         <input type="file" id="import-file-input" accept=".json" style="display:none" aria-hidden="true" tabindex="-1">
       </div>
       <p id="import-status" class="import-status" style="display:none" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="insights-section" aria-labelledby="insights-title-heading">
+      <h2 class="insights-title" id="insights-title-heading">Insights</h2>
+      <div class="insights-panel" id="insights-panel">
+        <div class="insights-block">
+          <h3 class="insights-block-title">Handicap Trend</h3>
+          <div id="handicap-chart" class="handicap-chart"></div>
+        </div>
+        <div class="insights-block">
+          <h3 class="insights-block-title">Course Statistics</h3>
+          <div id="course-stats" class="course-stats"></div>
+        </div>
+      </div>
     </section>
   </main>
 
