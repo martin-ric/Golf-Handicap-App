@@ -989,7 +989,19 @@ if ('serviceWorker' in navigator) {
       var n = series.length;
       var baseline = padT + plotH;
 
-      function xAt(i) { return padX + plotW * (i / (n - 1)); }
+      // Position points along a real time axis (not evenly spaced by index)
+      var times = series.map(function (p) {
+        return new Date(p.date + "T00:00:00").getTime();
+      });
+      var minT = times[0];
+      var maxT = times[n - 1];
+      var spanT = maxT - minT;
+
+      function xAt(i) {
+        // Fall back to even spacing if every round shares the same date
+        if (spanT <= 0) return padX + plotW * (i / (n - 1));
+        return padX + plotW * ((times[i] - minT) / spanT);
+      }
       // Larger handicap higher on screen → improvement (decreasing) trends downward
       function yAt(h) { return padT + plotH * (1 - (h - minH) / range); }
 

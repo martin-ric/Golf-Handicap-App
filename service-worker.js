@@ -1,4 +1,4 @@
-const CACHE_NAME = 'golf-handicap-v17';
+const CACHE_NAME = 'golf-handicap-v18';
 const ASSETS = [
   'index.html',
   'style.css',
