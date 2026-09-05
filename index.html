@@ -22,6 +22,7 @@
 </head>
 <body>
   <main class="container">
+    <section id="view-handicap" class="view" role="tabpanel" aria-labelledby="tab-handicap">
     <h1>Score Differential</h1>
     <p class="subtitle">Calculate Golf Handicap</p>
 
@@ -108,7 +109,58 @@
         </div>
       </div>
     </section>
+    </section>
+
+    <section id="view-bag" class="view" role="tabpanel" aria-labelledby="tab-bag" hidden>
+      <h1>My Bag</h1>
+      <p class="subtitle">Distances &amp; swing thoughts</p>
+
+      <section class="bag-section" aria-labelledby="clubs-title-heading">
+        <div class="rounds-header">
+          <h2 class="rounds-title" id="clubs-title-heading">Clubs</h2>
+          <div class="rounds-header-actions">
+            <button type="button" class="btn-text btn-add-club" id="add-club" aria-label="Add a club">Add Club</button>
+          </div>
+        </div>
+        <div id="clubs-list" class="clubs-list" role="list" aria-label="Clubs in my bag"></div>
+        <p id="clubs-empty" class="rounds-empty" role="status" aria-live="polite">No clubs yet. Add your first club.</p>
+      </section>
+
+      <section class="bag-section" aria-labelledby="notes-title-heading">
+        <div class="rounds-header">
+          <h2 class="rounds-title" id="notes-title-heading">Notes</h2>
+          <div class="rounds-header-actions">
+            <button type="button" class="btn-text btn-add-note" id="add-note" aria-label="Add a note">Add Note</button>
+          </div>
+        </div>
+        <div id="notes-list" class="notes-list" role="list" aria-label="General notes"></div>
+        <p id="notes-empty" class="rounds-empty" role="status" aria-live="polite">No notes yet.</p>
+      </section>
+    </section>
   </main>
+
+  <nav class="tabbar" role="tablist" aria-label="Sections">
+    <button type="button" class="tabbar-btn active" id="tab-handicap" role="tab" aria-selected="true" aria-controls="view-handicap">
+      <span class="tabbar-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+          <path d="M7 21V3"></path>
+          <path d="M7 4l10 3.5L7 11"></path>
+        </svg>
+      </span>
+      <span class="tabbar-label">Handicap</span>
+    </button>
+    <button type="button" class="tabbar-btn" id="tab-bag" role="tab" aria-selected="false" aria-controls="view-bag">
+      <span class="tabbar-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+          <path d="M9 7h6a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3z"></path>
+          <path d="M10 7V3"></path>
+          <path d="M14 7V4.5"></path>
+          <path d="M18 12h2v4h-2"></path>
+        </svg>
+      </span>
+      <span class="tabbar-label">My Bag</span>
+    </button>
+  </nav>
 
   <script src="script.js"></script>
 </body>
