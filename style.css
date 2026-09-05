@@ -866,3 +866,306 @@
        font-size: 1.5rem;
      }
    }
+  /* ============================================
+     Tab bar + views
+     ============================================ */
+
+  .view[hidden] {
+    display: none;
+  }
+
+  /* Keep page content clear of the fixed tab bar */
+  body {
+    padding-bottom: calc(3.5rem + clamp(0.5rem, 4vw, 1.5rem) + env(safe-area-inset-bottom));
+  }
+
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    background: #ffffff;
+    border-top: 1px solid rgba(10, 31, 22, 0.1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tabbar-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+    padding: 0.4rem 0.25rem 0.45rem;
+    font-family: inherit;
+    color: rgba(10, 31, 22, 0.45);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .tabbar-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 18px;
+  }
+
+  .tabbar-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .tabbar-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  .tabbar-btn.active {
+    color: #166534;
+  }
+
+  .tabbar-btn:focus-visible {
+    outline: 2px solid #0a1f16;
+    outline-offset: -2px;
+  }
+
+  /* ============================================
+     My Bag – clubs & notes
+     ============================================ */
+
+  .bag-section {
+    margin-top: 1.75rem;
+  }
+
+  .bag-section:first-of-type {
+    margin-top: 0;
+  }
+
+  .bag-section + .bag-section {
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(10, 31, 22, 0.08);
+  }
+
+  .clubs-list,
+  .notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .clubs-list:not(:empty) + .rounds-empty,
+  .notes-list:not(:empty) + .rounds-empty {
+    display: none;
+  }
+
+  .club-card,
+  .note-card {
+    background: #f8f9fa;
+    border: 1px solid rgba(10, 31, 22, 0.06);
+    border-radius: 8px;
+    overflow: hidden;
+    animation: cardFadeIn 0.3s ease-out;
+  }
+
+  /* Collapsed row – the whole row is the expand toggle */
+  .club-row,
+  .note-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.6rem 0.85rem;
+    font-family: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .club-name,
+  .note-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #0a1f16;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .club-distances {
+    flex-shrink: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #166534;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .club-distances-empty {
+    color: rgba(10, 31, 22, 0.3);
+    font-weight: 500;
+  }
+
+  /* Total distance – present but visually secondary next to the carry */
+  .club-total {
+    font-weight: 400;
+    font-size: 0.8125rem;
+    color: rgba(10, 31, 22, 0.4);
+  }
+
+  .club-unit {
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: rgba(10, 31, 22, 0.4);
+    margin-left: 0.15rem;
+  }
+
+  .club-sep {
+    font-weight: 400;
+    color: rgba(10, 31, 22, 0.3);
+  }
+
+  /* Expanded detail panel */
+  .club-detail,
+  .note-detail {
+    padding: 0 0.85rem 0.75rem;
+    border-top: 1px solid rgba(10, 31, 22, 0.06);
+  }
+
+  .club-note,
+  .note-body {
+    margin: 0.6rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: rgba(10, 31, 22, 0.7);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+
+  .club-shot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.1rem 0.5rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed rgba(10, 31, 22, 0.1);
+  }
+
+  .club-shot-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #0a1f16;
+    min-width: 3.5rem;
+  }
+
+  .club-shot-distance {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #166534;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .club-shot-note {
+    flex-basis: 100%;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: rgba(10, 31, 22, 0.7);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+
+  .club-detail-actions,
+  .note-detail-actions {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.75rem;
+  }
+
+  /* Shot rows inside the club editor */
+  .shot-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    background: #ffffff;
+    border: 1px solid rgba(10, 31, 22, 0.12);
+    border-radius: 6px;
+  }
+
+  .shot-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .shot-editor-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(10, 31, 22, 0.45);
+  }
+
+  .shot-editor-pair {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .shot-editor-pair > .round-card-editable-row {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .btn-shot-remove {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    color: rgba(10, 31, 22, 0.4);
+    background: none;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.2s ease, background 0.2s ease;
+  }
+
+  .btn-shot-remove:hover {
+    color: #b91c1c;
+    background: rgba(185, 28, 28, 0.08);
+  }
+
+  .btn-add-shot {
+    align-self: flex-start;
+  }
+
+  .round-card-editable-row textarea {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    line-height: 1.5;
+    color: #0a1f16;
+    background: #ffffff;
+    border: 1px solid rgba(10, 31, 22, 0.15);
+    border-radius: 6px;
+    resize: vertical;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .round-card-editable-row textarea:focus {
+    outline: none;
+    border-color: #0a1f16;
+    box-shadow: 0 0 0 2px rgba(10, 31, 22, 0.08);
+  }

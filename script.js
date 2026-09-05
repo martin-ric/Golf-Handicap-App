@@ -272,7 +272,7 @@ if ('serviceWorker' in navigator) {
     MAX_IMPORT_ROUNDS: 500,
 
     /**
-     * Export rounds and course book as a JSON file download.
+     * Export rounds, course book, club bag and notes as a JSON file download.
      */
     exportJSON: function () {
       var rounds = StorageService.loadRounds();
@@ -283,10 +283,12 @@ if ('serviceWorker' in navigator) {
         String(today.getDate()).padStart(2, "0");
 
       var exportData = {
-        version: 1,
+        version: 2,
         exportedAt: exportedAt,
         rounds: rounds,
-        courseBook: courseBook
+        courseBook: courseBook,
+        clubs: BagService.loadClubs(),
+        notes: NotesService.loadNotes()
       };
 
       var json = JSON.stringify(exportData, null, 2);
@@ -457,7 +459,7 @@ if ('serviceWorker' in navigator) {
     /**
      * Parse and fully validate a JSON import string.
      * @param {string} jsonString - Raw file contents
-     * @returns {{valid: boolean, rounds: Array|null, courseBook: Array|null, error: string|null}}
+     * @returns {{valid: boolean, rounds: Array|null, courseBook: Array|null, clubs: Array|null, notes: Array|null, error: string|null}}
      */
     parseImportFile: function (jsonString) {
       var parsed;
@@ -512,7 +514,34 @@ if ('serviceWorker' in navigator) {
         }
       }
 
-      return { valid: true, rounds: validatedRounds, courseBook: courseBook, error: null };
+      // clubs / notes (optional) — sanitized the same way as stored data,
+      // invalid entries are silently skipped
+      var clubs = null;
+      if (Array.isArray(parsed.clubs)) {
+        clubs = [];
+        for (var k = 0; k < parsed.clubs.length && clubs.length < BagService.MAX_CLUBS; k++) {
+          var club = BagService.sanitizeClub(parsed.clubs[k]);
+          if (club) clubs.push(club);
+        }
+      }
+
+      var notes = null;
+      if (Array.isArray(parsed.notes)) {
+        notes = [];
+        for (var m = 0; m < parsed.notes.length && notes.length < NotesService.MAX_NOTES; m++) {
+          var note = NotesService.sanitizeNote(parsed.notes[m]);
+          if (note) notes.push(note);
+        }
+      }
+
+      return {
+        valid: true,
+        rounds: validatedRounds,
+        courseBook: courseBook,
+        clubs: clubs,
+        notes: notes,
+        error: null
+      };
     }
   };
 
@@ -2230,12 +2259,24 @@ if ('serviceWorker' in navigator) {
         var importCount = result.rounds.length;
         var existingRounds = StorageService.loadRounds();
         var existingCount = existingRounds.length;
+        var existingClubs = BagService.loadClubs();
+        var existingNotes = NotesService.loadNotes();
+
+        // Describe everything the file carries, not just the rounds
+        var fileParts = [importCount + " round" + (importCount !== 1 ? "s" : "")];
+        if (result.clubs && result.clubs.length > 0) {
+          fileParts.push(result.clubs.length + " club" + (result.clubs.length !== 1 ? "s" : ""));
+        }
+        if (result.notes && result.notes.length > 0) {
+          fileParts.push(result.notes.length + " note" + (result.notes.length !== 1 ? "s" : ""));
+        }
 
         var replace = true;
-        if (existingCount > 0) {
-          var msg = "Found " + importCount + " round" + (importCount !== 1 ? "s" : "") + " in the file.\n\n" +
-            "OK \u2014 Replace your " + existingCount + " existing round" + (existingCount !== 1 ? "s" : "") + " with the imported data.\n" +
-            "Cancel \u2014 Add imported rounds to your existing rounds.";
+        var hasExistingData = existingCount > 0 || existingClubs.length > 0 || existingNotes.length > 0;
+        if (hasExistingData) {
+          var msg = "Found " + fileParts.join(", ") + " in the file.\n\n" +
+            "OK \u2014 Replace your existing data with the imported data.\n" +
+            "Cancel \u2014 Add the imported entries to your existing data.";
           replace = confirm(msg);
         }
 
@@ -2254,8 +2295,24 @@ if ('serviceWorker' in navigator) {
           });
         }
 
+        // Clubs and notes follow the same replace/add choice as the rounds
+        var importedParts = [importCount + " round" + (importCount !== 1 ? "s" : "")];
+        if (result.clubs) {
+          BagService.saveClubs(replace ? result.clubs : existingClubs.concat(result.clubs));
+          if (result.clubs.length > 0) {
+            importedParts.push(result.clubs.length + " club" + (result.clubs.length !== 1 ? "s" : ""));
+          }
+        }
+        if (result.notes) {
+          NotesService.saveNotes(replace ? result.notes : existingNotes.concat(result.notes));
+          if (result.notes.length > 0) {
+            importedParts.push(result.notes.length + " note" + (result.notes.length !== 1 ? "s" : ""));
+          }
+        }
+
         app.updateUI();
-        app.showImportStatus("Imported " + importCount + " round" + (importCount !== 1 ? "s" : "") + " successfully.", false);
+        BagUI.render();
+        app.showImportStatus("Imported " + importedParts.join(", ") + " successfully.", false);
       };
 
       reader.readAsText(file);
@@ -2317,14 +2374,1151 @@ if ('serviceWorker' in navigator) {
   };
 
   // ============================================================================
+  // CLUB BAG SERVICE
+  // ============================================================================
+
+  var BagService = {
+    STORAGE_KEY: "golf-club-bag",
+    MAX_CLUBS: 30,
+    MAX_SHOTS: 10,
+    MAX_NAME: 40,
+    MAX_LABEL: 24,
+    MAX_NOTE: 280,
+    MIN_CARRY: 1,
+    MAX_CARRY: 400,
+    MAX_TOTAL: 500,
+
+    /**
+     * Generate an id that stays unique even when several clubs are added
+     * within the same millisecond.
+     * @returns {string}
+     */
+    newId: function () {
+      return String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8);
+    },
+
+    /**
+     * Trim a free-text field to a maximum length; empty becomes null.
+     * @param {*} value
+     * @param {number} maxLength
+     * @returns {string|null}
+     */
+    cleanText: function (value, maxLength) {
+      if (typeof value !== "string") return null;
+      var trimmed = value.trim();
+      if (!trimmed) return null;
+      return trimmed.slice(0, maxLength);
+    },
+
+    /**
+     * Parse a distance into a whole number inside the allowed range.
+     * @param {*} value
+     * @param {number} max - Upper bound (carry and total differ)
+     * @returns {number|null}
+     */
+    toDistance: function (value, max) {
+      var num = typeof value === "number" ? value : parseFloat(value);
+      if (typeof num !== "number" || isNaN(num) || !isFinite(num)) return null;
+      num = Math.round(num);
+      if (num < this.MIN_CARRY || num > max) return null;
+      return num;
+    },
+
+    /**
+     * Whitelist and clamp a raw club object. Used for storage reads and imports,
+     * so anything malformed is dropped rather than trusted.
+     * @param {*} raw
+     * @returns {Object|null} Sanitized club, or null if unusable
+     */
+    sanitizeClub: function (raw) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+      if (typeof raw.name !== "string" || !raw.name.trim()) return null;
+
+      var shots = [];
+      if (Array.isArray(raw.shots)) {
+        for (var i = 0; i < raw.shots.length && shots.length < this.MAX_SHOTS; i++) {
+          var s = raw.shots[i];
+          if (!s || typeof s !== "object") continue;
+          var carry = this.toDistance(s.carry, this.MAX_CARRY);
+          if (carry === null) continue;
+          var total = this.toDistance(s.total, this.MAX_TOTAL);
+          if (total !== null && total < carry) total = null;
+          shots.push({
+            label: this.cleanText(s.label, this.MAX_LABEL),
+            carry: carry,
+            total: total,
+            note: this.cleanText(s.note, this.MAX_NOTE)
+          });
+        }
+      }
+
+      return {
+        id: (typeof raw.id === "string" && raw.id) ? raw.id.slice(0, 40) : this.newId(),
+        name: raw.name.trim().slice(0, this.MAX_NAME),
+        note: this.cleanText(raw.note, this.MAX_NOTE),
+        shots: shots
+      };
+    },
+
+    /**
+     * Load the club bag from localStorage.
+     * @returns {Array<Object>}
+     */
+    loadClubs: function () {
+      try {
+        var raw = localStorage.getItem(this.STORAGE_KEY);
+        if (!raw) return [];
+        var parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        var clubs = [];
+        for (var i = 0; i < parsed.length && clubs.length < this.MAX_CLUBS; i++) {
+          var club = this.sanitizeClub(parsed[i]);
+          if (club) clubs.push(club);
+        }
+        return clubs;
+      } catch (e) {
+        console.warn("Could not load club bag:", e);
+        return [];
+      }
+    },
+
+    /**
+     * Persist the club bag to localStorage.
+     * @param {Array<Object>} clubs
+     * @returns {{success: boolean, error: string|null}}
+     */
+    saveClubs: function (clubs) {
+      try {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(clubs.slice(0, this.MAX_CLUBS)));
+        return { success: true, error: null };
+      } catch (e) {
+        console.error("Could not save club bag:", e);
+        return { success: false, error: "Error saving: " + e.message };
+      }
+    },
+
+    /**
+     * The longest carry in a club, or null when it has no shots (e.g. the putter).
+     * @param {Object} club
+     * @returns {number|null}
+     */
+    maxCarry: function (club) {
+      var max = null;
+      (club.shots || []).forEach(function (shot) {
+        if (max === null || shot.carry > max) max = shot.carry;
+      });
+      return max;
+    },
+
+    /**
+     * Clubs longest-first, so the list reads like the actual distance ladder.
+     * Clubs without any distance keep their insertion order at the bottom.
+     * @param {Array<Object>} clubs
+     * @returns {Array<Object>} New sorted array
+     */
+    sortClubs: function (clubs) {
+      var self = this;
+      return clubs
+        .map(function (club, index) { return { club: club, index: index }; })
+        .sort(function (a, b) {
+          var maxA = self.maxCarry(a.club);
+          var maxB = self.maxCarry(b.club);
+          if (maxA === null && maxB === null) return a.index - b.index;
+          if (maxA === null) return 1;
+          if (maxB === null) return -1;
+          if (maxB !== maxA) return maxB - maxA;
+          return a.index - b.index;
+        })
+        .map(function (entry) { return entry.club; });
+    },
+
+    /**
+     * Shots of a club, longest carry first.
+     * @param {Array<Object>} shots
+     * @returns {Array<Object>} New sorted array
+     */
+    sortShots: function (shots) {
+      return (shots || []).slice().sort(function (a, b) { return b.carry - a.carry; });
+    }
+  };
+
+  // ============================================================================
+  // NOTES SERVICE (general notes, not tied to a club)
+  // ============================================================================
+
+  var NotesService = {
+    STORAGE_KEY: "golf-notes",
+    MAX_NOTES: 100,
+    MAX_TITLE: 60,
+    MAX_BODY: 2000,
+
+    /**
+     * Whitelist and clamp a raw note object.
+     * @param {*} raw
+     * @returns {Object|null}
+     */
+    sanitizeNote: function (raw) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+      if (typeof raw.title !== "string" || !raw.title.trim()) return null;
+      return {
+        id: (typeof raw.id === "string" && raw.id) ? raw.id.slice(0, 40) : BagService.newId(),
+        title: raw.title.trim().slice(0, this.MAX_TITLE),
+        body: BagService.cleanText(raw.body, this.MAX_BODY)
+      };
+    },
+
+    /**
+     * Load general notes from localStorage.
+     * @returns {Array<Object>}
+     */
+    loadNotes: function () {
+      try {
+        var raw = localStorage.getItem(this.STORAGE_KEY);
+        if (!raw) return [];
+        var parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        var notes = [];
+        for (var i = 0; i < parsed.length && notes.length < this.MAX_NOTES; i++) {
+          var note = this.sanitizeNote(parsed[i]);
+          if (note) notes.push(note);
+        }
+        return notes;
+      } catch (e) {
+        console.warn("Could not load notes:", e);
+        return [];
+      }
+    },
+
+    /**
+     * Persist general notes to localStorage.
+     * @param {Array<Object>} notes
+     * @returns {{success: boolean, error: string|null}}
+     */
+    saveNotes: function (notes) {
+      try {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(notes.slice(0, this.MAX_NOTES)));
+        return { success: true, error: null };
+      } catch (e) {
+        console.error("Could not save notes:", e);
+        return { success: false, error: "Error saving: " + e.message };
+      }
+    }
+  };
+
+  // ============================================================================
+  // NAVIGATION (bottom tab bar)
+  // ============================================================================
+
+  var Nav = {
+    STORAGE_KEY: "golf-active-tab",
+
+    tabs: [
+      { key: "handicap", buttonId: "tab-handicap", viewId: "view-handicap" },
+      { key: "bag", buttonId: "tab-bag", viewId: "view-bag" }
+    ],
+
+    /**
+     * Wire up the tab bar and restore the tab that was open last.
+     */
+    init: function () {
+      var self = this;
+      var usable = this.tabs.every(function (tab) {
+        return document.getElementById(tab.buttonId) && document.getElementById(tab.viewId);
+      });
+      if (!usable) return;
+
+      this.tabs.forEach(function (tab) {
+        document.getElementById(tab.buttonId).addEventListener("click", function () {
+          self.show(tab.key);
+        });
+      });
+
+      var stored = null;
+      try {
+        stored = localStorage.getItem(this.STORAGE_KEY);
+      } catch (e) {
+        stored = null;
+      }
+      this.show(stored === "bag" ? "bag" : "handicap", true);
+    },
+
+    /**
+     * Show one tab and hide the others.
+     * @param {string} key - Tab key
+     * @param {boolean} [silent] - Skip the scroll-to-top on initial restore
+     */
+    show: function (key, silent) {
+      this.tabs.forEach(function (tab) {
+        var button = document.getElementById(tab.buttonId);
+        var view = document.getElementById(tab.viewId);
+        var isActive = tab.key === key;
+        view.hidden = !isActive;
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-selected", String(isActive));
+      });
+
+      try {
+        localStorage.setItem(this.STORAGE_KEY, key);
+      } catch (e) {
+        // Ignore — tab restore is a convenience, not required
+      }
+
+      if (!silent) window.scrollTo(0, 0);
+    }
+  };
+
+  // ============================================================================
+  // MY BAG UI (clubs + general notes)
+  // ============================================================================
+
+  var BagUI = {
+    UNIT: "m",
+    LABEL_SUGGESTIONS: ["Full", "3/4", "Half", "Punch", "Chip"],
+
+    // Which cards are expanded, kept across re-renders
+    expandedClubs: {},
+    expandedNotes: {},
+
+    _fieldId: 0,
+
+    elements: {
+      clubsList: null,
+      clubsEmpty: null,
+      notesList: null,
+      notesEmpty: null,
+      addClubButton: null,
+      addNoteButton: null
+    },
+
+    /**
+     * Initialize the My Bag tab. Does nothing if its markup is absent.
+     */
+    init: function () {
+      this.elements.clubsList = document.getElementById("clubs-list");
+      this.elements.clubsEmpty = document.getElementById("clubs-empty");
+      this.elements.notesList = document.getElementById("notes-list");
+      this.elements.notesEmpty = document.getElementById("notes-empty");
+      this.elements.addClubButton = document.getElementById("add-club");
+      this.elements.addNoteButton = document.getElementById("add-note");
+
+      for (var key in this.elements) {
+        if (!this.elements[key]) {
+          console.error("My Bag: missing DOM element", key);
+          return;
+        }
+      }
+
+      this.createLabelSuggestions();
+
+      var self = this;
+      this.elements.addClubButton.addEventListener("click", function () {
+        self.showClubEditor(null);
+      });
+      this.elements.addNoteButton.addEventListener("click", function () {
+        self.showNoteEditor(null);
+      });
+
+      this.render();
+    },
+
+    /**
+     * Quick-pick options offered on the shot label field.
+     */
+    createLabelSuggestions: function () {
+      if (document.getElementById("shot-label-options")) return;
+      var datalist = document.createElement("datalist");
+      datalist.id = "shot-label-options";
+      this.LABEL_SUGGESTIONS.forEach(function (label) {
+        var option = document.createElement("option");
+        option.value = label;
+        datalist.appendChild(option);
+      });
+      document.body.appendChild(datalist);
+    },
+
+    /**
+     * Re-render both lists from storage.
+     */
+    render: function () {
+      if (!this.elements.clubsList || !this.elements.notesList) return;
+      this.renderClubs();
+      this.renderNotes();
+    },
+
+    // --- Shared form helpers -------------------------------------------------
+
+    /**
+     * Build a labeled input or textarea row.
+     * @param {string} labelText
+     * @param {string} type - Input type ("text", "number"); ignored for textareas
+     * @param {Object} [options] - field, placeholder, value, maxLength, multiline, rows, list
+     * @returns {{el: HTMLElement, input: HTMLElement}}
+     */
+    makeRow: function (labelText, type, options) {
+      options = options || {};
+      var id = "bag-field-" + (++this._fieldId);
+
+      var row = document.createElement("div");
+      row.className = "round-card-editable-row";
+
+      var label = document.createElement("label");
+      label.setAttribute("for", id);
+      label.textContent = labelText;
+
+      var input;
+      if (options.multiline) {
+        input = document.createElement("textarea");
+        input.rows = options.rows || 4;
+      } else {
+        input = document.createElement("input");
+        input.type = type || "text";
+        if (type === "number") {
+          input.step = "1";
+          input.inputMode = "numeric";
+        }
+      }
+      input.id = id;
+      input.placeholder = options.placeholder || "";
+      if (options.maxLength) input.maxLength = options.maxLength;
+      if (options.field) input.setAttribute("data-field", options.field);
+      if (options.list) input.setAttribute("list", options.list);
+      if (options.value !== null && options.value !== undefined) input.value = String(options.value);
+
+      row.appendChild(label);
+      row.appendChild(input);
+      return { el: row, input: input };
+    },
+
+    /**
+     * Read a trimmed value from a data-field input inside a container.
+     * @param {HTMLElement} container
+     * @param {string} field
+     * @returns {string}
+     */
+    readField: function (container, field) {
+      var input = container.querySelector('[data-field="' + field + '"]');
+      return input ? input.value.trim() : "";
+    },
+
+    /**
+     * Build the Save/Cancel action row shared by both editors.
+     * @param {Function} onSave
+     * @param {Function} onCancel
+     * @returns {HTMLElement}
+     */
+    makeEditorActions: function (onSave, onCancel) {
+      var actions = document.createElement("div");
+      actions.className = "round-card-editable-actions";
+
+      var saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "btn-save-round";
+      saveButton.textContent = "Save";
+      saveButton.addEventListener("click", onSave);
+
+      var cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "btn-cancel-round";
+      cancelButton.textContent = "Cancel";
+      cancelButton.addEventListener("click", onCancel);
+
+      actions.appendChild(saveButton);
+      actions.appendChild(cancelButton);
+      return actions;
+    },
+
+    /**
+     * A hidden-until-needed inline error line for an editor.
+     * @returns {HTMLElement}
+     */
+    makeErrorElement: function () {
+      var error = document.createElement("p");
+      error.className = "add-round-error";
+      error.style.display = "none";
+      error.setAttribute("role", "alert");
+      return error;
+    },
+
+    /**
+     * Show a message in an editor's error line.
+     * @param {HTMLElement} errorElement
+     * @param {string} message
+     */
+    showEditorError: function (errorElement, message) {
+      errorElement.textContent = message;
+      errorElement.style.display = "";
+    },
+
+    // --- Clubs ---------------------------------------------------------------
+
+    /**
+     * Render the club list, longest club first.
+     */
+    renderClubs: function () {
+      var self = this;
+      this.elements.clubsList.textContent = "";
+      BagService.sortClubs(BagService.loadClubs()).forEach(function (club) {
+        self.elements.clubsList.appendChild(self.createClubCard(club));
+      });
+    },
+
+    /**
+     * Build one collapsed club card, expanded if it was left open.
+     * @param {Object} club
+     * @returns {HTMLElement}
+     */
+    createClubCard: function (club) {
+      var self = this;
+
+      var card = document.createElement("div");
+      card.className = "club-card";
+      card.setAttribute("role", "listitem");
+      card.setAttribute("data-id", club.id);
+
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "club-row";
+      row.setAttribute("aria-expanded", "false");
+
+      var name = document.createElement("span");
+      name.className = "club-name";
+      name.textContent = club.name;
+
+      row.appendChild(name);
+      row.appendChild(this.buildDistanceSummary(club));
+
+      row.addEventListener("click", function () {
+        var detail = card.querySelector(".club-detail");
+        if (detail) {
+          card.removeChild(detail);
+          self.expandedClubs[club.id] = false;
+          row.setAttribute("aria-expanded", "false");
+        } else {
+          card.appendChild(self.createClubDetail(club));
+          self.expandedClubs[club.id] = true;
+          row.setAttribute("aria-expanded", "true");
+        }
+      });
+
+      card.appendChild(row);
+      if (this.expandedClubs[club.id]) {
+        card.appendChild(this.createClubDetail(club));
+        row.setAttribute("aria-expanded", "true");
+      }
+      return card;
+    },
+
+    /**
+     * The distances shown on the collapsed row: carries in green, totals dimmed.
+     * @param {Object} club
+     * @returns {HTMLElement}
+     */
+    buildDistanceSummary: function (club) {
+      var summary = document.createElement("span");
+      summary.className = "club-distances";
+
+      var shots = BagService.sortShots(club.shots);
+      if (shots.length === 0) {
+        summary.className += " club-distances-empty";
+        summary.textContent = "—";
+        return summary;
+      }
+
+      shots.forEach(function (shot, index) {
+        if (index > 0) {
+          var separator = document.createElement("span");
+          separator.className = "club-sep";
+          separator.textContent = " · ";
+          summary.appendChild(separator);
+        }
+        summary.appendChild(document.createTextNode(String(shot.carry)));
+        if (shot.total !== null) {
+          var total = document.createElement("span");
+          total.className = "club-total";
+          total.textContent = " (" + shot.total + ")";
+          summary.appendChild(total);
+        }
+      });
+
+      var unit = document.createElement("span");
+      unit.className = "club-unit";
+      unit.textContent = this.UNIT;
+      summary.appendChild(unit);
+      return summary;
+    },
+
+    /**
+     * The expanded panel of a club: club thought, one line per shot, actions.
+     * @param {Object} club
+     * @returns {HTMLElement}
+     */
+    createClubDetail: function (club) {
+      var self = this;
+
+      var detail = document.createElement("div");
+      detail.className = "club-detail";
+
+      if (club.note) {
+        var note = document.createElement("p");
+        note.className = "club-note";
+        note.textContent = club.note;
+        detail.appendChild(note);
+      }
+
+      BagService.sortShots(club.shots).forEach(function (shot) {
+        var shotEl = document.createElement("div");
+        shotEl.className = "club-shot";
+
+        if (shot.label) {
+          var label = document.createElement("span");
+          label.className = "club-shot-label";
+          label.textContent = shot.label;
+          shotEl.appendChild(label);
+        }
+
+        var distance = document.createElement("span");
+        distance.className = "club-shot-distance";
+        distance.textContent = String(shot.carry);
+        if (shot.total !== null) {
+          var total = document.createElement("span");
+          total.className = "club-total";
+          total.textContent = " (" + shot.total + ")";
+          distance.appendChild(total);
+        }
+        var unit = document.createElement("span");
+        unit.className = "club-unit";
+        unit.textContent = self.UNIT;
+        distance.appendChild(unit);
+        shotEl.appendChild(distance);
+
+        if (shot.note) {
+          var shotNote = document.createElement("span");
+          shotNote.className = "club-shot-note";
+          shotNote.textContent = shot.note;
+          shotEl.appendChild(shotNote);
+        }
+
+        detail.appendChild(shotEl);
+      });
+
+      var actions = document.createElement("div");
+      actions.className = "club-detail-actions";
+
+      var editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "btn-text";
+      editButton.textContent = "Edit";
+      editButton.setAttribute("aria-label", "Edit " + club.name);
+      editButton.addEventListener("click", function () {
+        self.showClubEditor(club);
+      });
+
+      var deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "btn-text btn-delete-all";
+      deleteButton.textContent = "Delete";
+      deleteButton.setAttribute("aria-label", "Delete " + club.name);
+      deleteButton.addEventListener("click", function () {
+        self.deleteClub(club);
+      });
+
+      actions.appendChild(editButton);
+      actions.appendChild(deleteButton);
+      detail.appendChild(actions);
+      return detail;
+    },
+
+    /**
+     * Delete a club after confirmation.
+     * @param {Object} club
+     */
+    deleteClub: function (club) {
+      if (!confirm('Delete "' + club.name + '"? This cannot be undone.')) return;
+      var remaining = BagService.loadClubs().filter(function (c) { return c.id !== club.id; });
+      BagService.saveClubs(remaining);
+      delete this.expandedClubs[club.id];
+      this.renderClubs();
+    },
+
+    /**
+     * Open the club editor, replacing the club's card when editing.
+     * Only one editor can be open at a time.
+     * @param {Object|null} club - Club to edit, or null to add a new one
+     */
+    showClubEditor: function (club) {
+      if (this.elements.clubsList.querySelector(".round-card-editable")) return;
+
+      var editor = this.createClubEditor(club);
+      if (club) {
+        var card = this.elements.clubsList.querySelector('[data-id="' + club.id + '"]');
+        if (card) {
+          this.elements.clubsList.replaceChild(editor, card);
+        } else {
+          this.elements.clubsList.appendChild(editor);
+        }
+      } else {
+        this.elements.clubsList.prepend(editor);
+      }
+      var nameInput = editor.querySelector('[data-field="name"]');
+      if (nameInput) nameInput.focus();
+    },
+
+    /**
+     * Build the add/edit form for a club.
+     * @param {Object|null} club
+     * @returns {HTMLElement}
+     */
+    createClubEditor: function (club) {
+      var self = this;
+      var isEdit = !!club;
+
+      var card = document.createElement("div");
+      card.className = "round-card-editable";
+      card.setAttribute("role", "form");
+      card.setAttribute("aria-label", isEdit ? "Edit club" : "Add club");
+
+      var nameRow = this.makeRow("Club", "text", {
+        field: "name",
+        placeholder: "e.g. 56° Wedge",
+        maxLength: BagService.MAX_NAME,
+        value: isEdit ? club.name : ""
+      });
+
+      var noteRow = this.makeRow("Swing thought for this club (optional)", "text", {
+        field: "note",
+        placeholder: "e.g. stay level, no scoop",
+        maxLength: BagService.MAX_NOTE,
+        value: isEdit ? (club.note || "") : ""
+      });
+
+      var shotsContainer = document.createElement("div");
+      shotsContainer.className = "shots-container";
+
+      var existingShots = isEdit ? BagService.sortShots(club.shots) : [];
+      if (existingShots.length === 0) {
+        shotsContainer.appendChild(this.createShotEditor(null));
+      } else {
+        existingShots.forEach(function (shot) {
+          shotsContainer.appendChild(self.createShotEditor(shot));
+        });
+      }
+
+      var addShotButton = document.createElement("button");
+      addShotButton.type = "button";
+      addShotButton.className = "btn-text btn-add-shot";
+      addShotButton.textContent = "+ Add shot";
+      addShotButton.addEventListener("click", function () {
+        if (shotsContainer.children.length >= BagService.MAX_SHOTS) return;
+        shotsContainer.appendChild(self.createShotEditor(null));
+      });
+
+      var errorElement = this.makeErrorElement();
+
+      var actions = this.makeEditorActions(
+        function () { self.saveClubEditor(card, errorElement, club); },
+        function () { self.renderClubs(); }
+      );
+
+      card.appendChild(nameRow.el);
+      card.appendChild(noteRow.el);
+      card.appendChild(shotsContainer);
+      card.appendChild(addShotButton);
+      card.appendChild(errorElement);
+      card.appendChild(actions);
+      return card;
+    },
+
+    /**
+     * Build one shot block inside the club editor.
+     * @param {Object|null} shot
+     * @returns {HTMLElement}
+     */
+    createShotEditor: function (shot) {
+      var wrapper = document.createElement("div");
+      wrapper.className = "shot-editor";
+
+      var header = document.createElement("div");
+      header.className = "shot-editor-header";
+
+      var title = document.createElement("span");
+      title.className = "shot-editor-title";
+      title.textContent = "Shot";
+
+      var removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "btn-shot-remove";
+      removeButton.textContent = "×";
+      removeButton.title = "Remove this shot";
+      removeButton.setAttribute("aria-label", "Remove this shot");
+      removeButton.addEventListener("click", function () {
+        if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+      });
+
+      header.appendChild(title);
+      header.appendChild(removeButton);
+
+      var labelRow = this.makeRow("Label (optional)", "text", {
+        field: "label",
+        placeholder: "e.g. Full, 3/4, Half",
+        maxLength: BagService.MAX_LABEL,
+        list: "shot-label-options",
+        value: shot ? (shot.label || "") : ""
+      });
+
+      var carryRow = this.makeRow("Carry (" + this.UNIT + ")", "number", {
+        field: "carry",
+        placeholder: "e.g. 60",
+        value: shot ? shot.carry : ""
+      });
+
+      var totalRow = this.makeRow("Total (optional)", "number", {
+        field: "total",
+        placeholder: "e.g. 65",
+        value: shot && shot.total !== null ? shot.total : ""
+      });
+
+      var pair = document.createElement("div");
+      pair.className = "shot-editor-pair";
+      pair.appendChild(carryRow.el);
+      pair.appendChild(totalRow.el);
+
+      var noteRow = this.makeRow("Swing thought (optional)", "text", {
+        field: "shot-note",
+        placeholder: "e.g. 9 o'clock, ball back",
+        maxLength: BagService.MAX_NOTE,
+        value: shot ? (shot.note || "") : ""
+      });
+
+      wrapper.appendChild(header);
+      wrapper.appendChild(labelRow.el);
+      wrapper.appendChild(pair);
+      wrapper.appendChild(noteRow.el);
+      return wrapper;
+    },
+
+    /**
+     * Validate and save the club editor.
+     * @param {HTMLElement} card - The editor element
+     * @param {HTMLElement} errorElement - Inline error line
+     * @param {Object|null} existingClub - Club being edited, or null when adding
+     */
+    saveClubEditor: function (card, errorElement, existingClub) {
+      var name = this.readField(card, "name");
+      if (!name) {
+        this.showEditorError(errorElement, "Please enter a club name.");
+        return;
+      }
+
+      var shotElements = card.querySelectorAll(".shot-editor");
+      var shots = [];
+      for (var i = 0; i < shotElements.length; i++) {
+        var element = shotElements[i];
+        var label = this.readField(element, "label");
+        var carryRaw = this.readField(element, "carry");
+        var totalRaw = this.readField(element, "total");
+        var note = this.readField(element, "shot-note");
+
+        // A completely empty block just means the user changed their mind
+        if (!label && !carryRaw && !totalRaw && !note) continue;
+
+        var position = "Shot " + (shots.length + 1) + ": ";
+        if (!carryRaw) {
+          this.showEditorError(errorElement, position + "please enter a carry distance.");
+          return;
+        }
+        var carry = BagService.toDistance(carryRaw, BagService.MAX_CARRY);
+        if (carry === null) {
+          this.showEditorError(errorElement, position + "carry must be between " +
+            BagService.MIN_CARRY + " and " + BagService.MAX_CARRY + " " + this.UNIT + ".");
+          return;
+        }
+
+        var total = null;
+        if (totalRaw) {
+          total = BagService.toDistance(totalRaw, BagService.MAX_TOTAL);
+          if (total === null) {
+            this.showEditorError(errorElement, position + "total must be between " +
+              BagService.MIN_CARRY + " and " + BagService.MAX_TOTAL + " " + this.UNIT + ".");
+            return;
+          }
+          if (total < carry) {
+            this.showEditorError(errorElement, position + "total cannot be shorter than carry.");
+            return;
+          }
+        }
+
+        shots.push({
+          label: label ? label.slice(0, BagService.MAX_LABEL) : null,
+          carry: carry,
+          total: total,
+          note: note ? note.slice(0, BagService.MAX_NOTE) : null
+        });
+      }
+
+      var noteValue = this.readField(card, "note");
+      var club = {
+        id: existingClub ? existingClub.id : BagService.newId(),
+        name: name.slice(0, BagService.MAX_NAME),
+        note: noteValue ? noteValue.slice(0, BagService.MAX_NOTE) : null,
+        shots: shots
+      };
+
+      var clubs = BagService.loadClubs();
+      if (existingClub) {
+        clubs = clubs.map(function (c) { return c.id === club.id ? club : c; });
+      } else {
+        if (clubs.length >= BagService.MAX_CLUBS) {
+          this.showEditorError(errorElement, "You already have " + BagService.MAX_CLUBS + " clubs.");
+          return;
+        }
+        clubs.push(club);
+      }
+
+      var result = BagService.saveClubs(clubs);
+      if (!result.success) {
+        this.showEditorError(errorElement, result.error);
+        return;
+      }
+
+      // Leave the saved club open so the result is visible straight away
+      this.expandedClubs[club.id] = true;
+      this.renderClubs();
+    },
+
+    // --- General notes -------------------------------------------------------
+
+    /**
+     * Render the general notes list.
+     */
+    renderNotes: function () {
+      var self = this;
+      this.elements.notesList.textContent = "";
+      NotesService.loadNotes().forEach(function (note) {
+        self.elements.notesList.appendChild(self.createNoteCard(note));
+      });
+    },
+
+    /**
+     * Build one collapsed note card.
+     * @param {Object} note
+     * @returns {HTMLElement}
+     */
+    createNoteCard: function (note) {
+      var self = this;
+
+      var card = document.createElement("div");
+      card.className = "note-card";
+      card.setAttribute("role", "listitem");
+      card.setAttribute("data-id", note.id);
+
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "note-row";
+      row.setAttribute("aria-expanded", "false");
+
+      var title = document.createElement("span");
+      title.className = "note-title";
+      title.textContent = note.title;
+      row.appendChild(title);
+
+      row.addEventListener("click", function () {
+        var detail = card.querySelector(".note-detail");
+        if (detail) {
+          card.removeChild(detail);
+          self.expandedNotes[note.id] = false;
+          row.setAttribute("aria-expanded", "false");
+        } else {
+          card.appendChild(self.createNoteDetail(note));
+          self.expandedNotes[note.id] = true;
+          row.setAttribute("aria-expanded", "true");
+        }
+      });
+
+      card.appendChild(row);
+      if (this.expandedNotes[note.id]) {
+        card.appendChild(this.createNoteDetail(note));
+        row.setAttribute("aria-expanded", "true");
+      }
+      return card;
+    },
+
+    /**
+     * The expanded panel of a note.
+     * @param {Object} note
+     * @returns {HTMLElement}
+     */
+    createNoteDetail: function (note) {
+      var self = this;
+
+      var detail = document.createElement("div");
+      detail.className = "note-detail";
+
+      if (note.body) {
+        var body = document.createElement("p");
+        body.className = "note-body";
+        body.textContent = note.body;
+        detail.appendChild(body);
+      }
+
+      var actions = document.createElement("div");
+      actions.className = "note-detail-actions";
+
+      var editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "btn-text";
+      editButton.textContent = "Edit";
+      editButton.setAttribute("aria-label", "Edit note " + note.title);
+      editButton.addEventListener("click", function () {
+        self.showNoteEditor(note);
+      });
+
+      var deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "btn-text btn-delete-all";
+      deleteButton.textContent = "Delete";
+      deleteButton.setAttribute("aria-label", "Delete note " + note.title);
+      deleteButton.addEventListener("click", function () {
+        self.deleteNote(note);
+      });
+
+      actions.appendChild(editButton);
+      actions.appendChild(deleteButton);
+      detail.appendChild(actions);
+      return detail;
+    },
+
+    /**
+     * Delete a note after confirmation.
+     * @param {Object} note
+     */
+    deleteNote: function (note) {
+      if (!confirm('Delete "' + note.title + '"? This cannot be undone.')) return;
+      var remaining = NotesService.loadNotes().filter(function (n) { return n.id !== note.id; });
+      NotesService.saveNotes(remaining);
+      delete this.expandedNotes[note.id];
+      this.renderNotes();
+    },
+
+    /**
+     * Open the note editor, replacing the note's card when editing.
+     * @param {Object|null} note
+     */
+    showNoteEditor: function (note) {
+      if (this.elements.notesList.querySelector(".round-card-editable")) return;
+
+      var editor = this.createNoteEditor(note);
+      if (note) {
+        var card = this.elements.notesList.querySelector('[data-id="' + note.id + '"]');
+        if (card) {
+          this.elements.notesList.replaceChild(editor, card);
+        } else {
+          this.elements.notesList.appendChild(editor);
+        }
+      } else {
+        this.elements.notesList.prepend(editor);
+      }
+      var titleInput = editor.querySelector('[data-field="title"]');
+      if (titleInput) titleInput.focus();
+    },
+
+    /**
+     * Build the add/edit form for a general note.
+     * @param {Object|null} note
+     * @returns {HTMLElement}
+     */
+    createNoteEditor: function (note) {
+      var self = this;
+      var isEdit = !!note;
+
+      var card = document.createElement("div");
+      card.className = "round-card-editable";
+      card.setAttribute("role", "form");
+      card.setAttribute("aria-label", isEdit ? "Edit note" : "Add note");
+
+      var titleRow = this.makeRow("Title", "text", {
+        field: "title",
+        placeholder: "e.g. Pre-shot routine",
+        maxLength: NotesService.MAX_TITLE,
+        value: isEdit ? note.title : ""
+      });
+
+      var bodyRow = this.makeRow("Note", "text", {
+        field: "body",
+        placeholder: "e.g. pick a target, one practice swing, commit",
+        maxLength: NotesService.MAX_BODY,
+        multiline: true,
+        value: isEdit ? (note.body || "") : ""
+      });
+
+      var errorElement = this.makeErrorElement();
+
+      var actions = this.makeEditorActions(
+        function () { self.saveNoteEditor(card, errorElement, note); },
+        function () { self.renderNotes(); }
+      );
+
+      card.appendChild(titleRow.el);
+      card.appendChild(bodyRow.el);
+      card.appendChild(errorElement);
+      card.appendChild(actions);
+      return card;
+    },
+
+    /**
+     * Validate and save the note editor.
+     * @param {HTMLElement} card
+     * @param {HTMLElement} errorElement
+     * @param {Object|null} existingNote
+     */
+    saveNoteEditor: function (card, errorElement, existingNote) {
+      var title = this.readField(card, "title");
+      if (!title) {
+        this.showEditorError(errorElement, "Please enter a title.");
+        return;
+      }
+      var body = this.readField(card, "body");
+
+      var note = {
+        id: existingNote ? existingNote.id : BagService.newId(),
+        title: title.slice(0, NotesService.MAX_TITLE),
+        body: body ? body.slice(0, NotesService.MAX_BODY) : null
+      };
+
+      var notes = NotesService.loadNotes();
+      if (existingNote) {
+        notes = notes.map(function (n) { return n.id === note.id ? note : n; });
+      } else {
+        if (notes.length >= NotesService.MAX_NOTES) {
+          this.showEditorError(errorElement, "You already have " + NotesService.MAX_NOTES + " notes.");
+          return;
+        }
+        notes.push(note);
+      }
+
+      var result = NotesService.saveNotes(notes);
+      if (!result.success) {
+        this.showEditorError(errorElement, result.error);
+        return;
+      }
+
+      this.expandedNotes[note.id] = true;
+      this.renderNotes();
+    }
+  };
+
+  // ============================================================================
   // START
   // ============================================================================
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      App.init();
-    });
-  } else {
+  function start() {
     App.init();
+    Nav.init();
+    BagUI.init();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
   }
 })();
