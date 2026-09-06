@@ -16,29 +16,26 @@
    body {
      margin: 0;
      font-family: "Inter", system-ui, -apple-system, sans-serif;
-     background-color: #f8f9fa;
+     background-color: #ffffff;
      color: #0a1f16;
      min-height: 100vh;
      min-width: 0;
      display: flex;
-     align-items: center;
+     align-items: flex-start;
      justify-content: center;
-     padding: clamp(0.5rem, 4vw, 1.5rem);
+     padding: 1.25rem 0;
      overflow-x: hidden;
      -webkit-font-smoothing: antialiased;
      -moz-osx-font-smoothing: grayscale;
    }
    
-   /* Card – off-white background, subtle shadow */
+   /* No card of its own – the page is the container, so the content boxes
+      inside it can run close to the edges of a phone screen */
    .container {
      width: 100%;
      min-width: 0;
-     max-width: 420px;
-     padding: clamp(1.5rem, 6vw, 2.5rem);
-     background: #ffffff;
-     border-radius: 10px;
-     border: 1px solid rgba(10, 31, 22, 0.08);
-     box-shadow: 0 2px 16px rgba(10, 31, 22, 0.06);
+     max-width: 480px;
+     padding: 0 0.875rem;
    }
    
    /* Heading */
@@ -833,16 +830,6 @@
 
   /* Responsive */
    @media (max-width: 480px) {
-     body {
-       align-items: flex-start;
-       padding-top: 2rem;
-     }
-   
-     .container {
-       border-radius: 8px;
-       padding: 1.5rem;
-     }
-   
      h1 {
        font-size: clamp(1.35rem, 5vw, 1.6rem);
      }
@@ -876,7 +863,7 @@
 
   /* Keep page content clear of the fixed tab bar */
   body {
-    padding-bottom: calc(3.5rem + clamp(0.5rem, 4vw, 1.5rem) + env(safe-area-inset-bottom));
+    padding-bottom: calc(3.5rem + 1.25rem + env(safe-area-inset-bottom));
   }
 
   .tabbar {
@@ -1040,7 +1027,6 @@
     border-top: 1px solid rgba(10, 31, 22, 0.06);
   }
 
-  .club-note,
   .note-body {
     margin: 0.6rem 0 0;
     font-size: 0.8125rem;
@@ -1058,6 +1044,11 @@
     margin-top: 0.6rem;
     padding-top: 0.6rem;
     border-top: 1px dashed rgba(10, 31, 22, 0.1);
+  }
+
+  .club-shot:first-child {
+    padding-top: 0;
+    border-top: none;
   }
 
   .club-shot-label {
@@ -1090,15 +1081,14 @@
     margin-top: 0.75rem;
   }
 
-  /* Shot rows inside the club editor */
+  /* Shot rows inside the club editor – separated by a rule rather than
+     nested in a box of their own, so the editor stays flat */
   .shot-editor {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    padding: 0.6rem 0.7rem;
-    background: #ffffff;
-    border: 1px solid rgba(10, 31, 22, 0.12);
-    border-radius: 6px;
+    padding-top: 0.75rem;
+    border-top: 1px dashed rgba(10, 31, 22, 0.15);
   }
 
   .shot-editor-header {

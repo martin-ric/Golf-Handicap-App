@@ -2439,23 +2439,28 @@ if ('serviceWorker' in navigator) {
         for (var i = 0; i < raw.shots.length && shots.length < this.MAX_SHOTS; i++) {
           var s = raw.shots[i];
           if (!s || typeof s !== "object") continue;
+          var label = this.cleanText(s.label, this.MAX_LABEL);
+          var shotNote = this.cleanText(s.note, this.MAX_NOTE);
+          // Carry is optional — a shot may be nothing but a note (e.g. the putter)
           var carry = this.toDistance(s.carry, this.MAX_CARRY);
-          if (carry === null) continue;
-          var total = this.toDistance(s.total, this.MAX_TOTAL);
+          var total = carry === null ? null : this.toDistance(s.total, this.MAX_TOTAL);
           if (total !== null && total < carry) total = null;
-          shots.push({
-            label: this.cleanText(s.label, this.MAX_LABEL),
-            carry: carry,
-            total: total,
-            note: this.cleanText(s.note, this.MAX_NOTE)
-          });
+          if (carry === null && !label && !shotNote) continue;
+          shots.push({ label: label, carry: carry, total: total, note: shotNote });
         }
+      }
+
+      // Earlier versions gave each club a note of its own. Keep that text by
+      // turning it into a distance-less shot, which is how general remarks
+      // about a club are stored now.
+      var legacyNote = this.cleanText(raw.note, this.MAX_NOTE);
+      if (legacyNote && shots.length < this.MAX_SHOTS) {
+        shots.push({ label: null, carry: null, total: null, note: legacyNote });
       }
 
       return {
         id: (typeof raw.id === "string" && raw.id) ? raw.id.slice(0, 40) : this.newId(),
         name: raw.name.trim().slice(0, this.MAX_NAME),
-        note: this.cleanText(raw.note, this.MAX_NOTE),
         shots: shots
       };
     },
@@ -2505,6 +2510,7 @@ if ('serviceWorker' in navigator) {
     maxCarry: function (club) {
       var max = null;
       (club.shots || []).forEach(function (shot) {
+        if (shot.carry === null) return;
         if (max === null || shot.carry > max) max = shot.carry;
       });
       return max;
@@ -2533,12 +2539,23 @@ if ('serviceWorker' in navigator) {
     },
 
     /**
-     * Shots of a club, longest carry first.
+     * Shots of a club, longest carry first; distance-less shots come last.
      * @param {Array<Object>} shots
      * @returns {Array<Object>} New sorted array
      */
     sortShots: function (shots) {
-      return (shots || []).slice().sort(function (a, b) { return b.carry - a.carry; });
+      return (shots || [])
+        .map(function (shot, index) { return { shot: shot, index: index }; })
+        .sort(function (a, b) {
+          var carryA = a.shot.carry;
+          var carryB = b.shot.carry;
+          if (carryA === null && carryB === null) return a.index - b.index;
+          if (carryA === null) return 1;
+          if (carryB === null) return -1;
+          if (carryB !== carryA) return carryB - carryA;
+          return a.index - b.index;
+        })
+        .map(function (entry) { return entry.shot; });
     }
   };
 
@@ -2917,7 +2934,9 @@ if ('serviceWorker' in navigator) {
       var summary = document.createElement("span");
       summary.className = "club-distances";
 
-      var shots = BagService.sortShots(club.shots);
+      var shots = BagService.sortShots(club.shots).filter(function (shot) {
+        return shot.carry !== null;
+      });
       if (shots.length === 0) {
         summary.className += " club-distances-empty";
         summary.textContent = "—";
@@ -2958,14 +2977,13 @@ if ('serviceWorker' in navigator) {
       var detail = document.createElement("div");
       detail.className = "club-detail";
 
-      if (club.note) {
-        var note = document.createElement("p");
-        note.className = "club-note";
-        note.textContent = club.note;
-        detail.appendChild(note);
-      }
+      // When the club has just one distance the collapsed row already shows it,
+      // so repeating it here would only add clutter
+      var shots = BagService.sortShots(club.shots);
+      var distanceCount = shots.filter(function (shot) { return shot.carry !== null; }).length;
+      var repeatDistance = distanceCount > 1;
 
-      BagService.sortShots(club.shots).forEach(function (shot) {
+      shots.forEach(function (shot) {
         var shotEl = document.createElement("div");
         shotEl.className = "club-shot";
 
@@ -2976,20 +2994,22 @@ if ('serviceWorker' in navigator) {
           shotEl.appendChild(label);
         }
 
-        var distance = document.createElement("span");
-        distance.className = "club-shot-distance";
-        distance.textContent = String(shot.carry);
-        if (shot.total !== null) {
-          var total = document.createElement("span");
-          total.className = "club-total";
-          total.textContent = " (" + shot.total + ")";
-          distance.appendChild(total);
+        if (shot.carry !== null && repeatDistance) {
+          var distance = document.createElement("span");
+          distance.className = "club-shot-distance";
+          distance.textContent = String(shot.carry);
+          if (shot.total !== null) {
+            var total = document.createElement("span");
+            total.className = "club-total";
+            total.textContent = " (" + shot.total + ")";
+            distance.appendChild(total);
+          }
+          var unit = document.createElement("span");
+          unit.className = "club-unit";
+          unit.textContent = self.UNIT;
+          distance.appendChild(unit);
+          shotEl.appendChild(distance);
         }
-        var unit = document.createElement("span");
-        unit.className = "club-unit";
-        unit.textContent = self.UNIT;
-        distance.appendChild(unit);
-        shotEl.appendChild(distance);
 
         if (shot.note) {
           var shotNote = document.createElement("span");
@@ -2998,7 +3018,7 @@ if ('serviceWorker' in navigator) {
           shotEl.appendChild(shotNote);
         }
 
-        detail.appendChild(shotEl);
+        if (shotEl.childNodes.length > 0) detail.appendChild(shotEl);
       });
 
       var actions = document.createElement("div");
@@ -3084,13 +3104,6 @@ if ('serviceWorker' in navigator) {
         value: isEdit ? club.name : ""
       });
 
-      var noteRow = this.makeRow("Swing thought for this club (optional)", "text", {
-        field: "note",
-        placeholder: "e.g. stay level, no scoop",
-        maxLength: BagService.MAX_NOTE,
-        value: isEdit ? (club.note || "") : ""
-      });
-
       var shotsContainer = document.createElement("div");
       shotsContainer.className = "shots-container";
 
@@ -3120,7 +3133,6 @@ if ('serviceWorker' in navigator) {
       );
 
       card.appendChild(nameRow.el);
-      card.appendChild(noteRow.el);
       card.appendChild(shotsContainer);
       card.appendChild(addShotButton);
       card.appendChild(errorElement);
@@ -3165,13 +3177,13 @@ if ('serviceWorker' in navigator) {
         value: shot ? (shot.label || "") : ""
       });
 
-      var carryRow = this.makeRow("Carry (" + this.UNIT + ")", "number", {
+      var carryRow = this.makeRow("Carry (" + this.UNIT + ", optional)", "number", {
         field: "carry",
         placeholder: "e.g. 60",
-        value: shot ? shot.carry : ""
+        value: shot && shot.carry !== null ? shot.carry : ""
       });
 
-      var totalRow = this.makeRow("Total (optional)", "number", {
+      var totalRow = this.makeRow("Total (" + this.UNIT + ", optional)", "number", {
         field: "total",
         placeholder: "e.g. 65",
         value: shot && shot.total !== null ? shot.total : ""
@@ -3182,7 +3194,7 @@ if ('serviceWorker' in navigator) {
       pair.appendChild(carryRow.el);
       pair.appendChild(totalRow.el);
 
-      var noteRow = this.makeRow("Swing thought (optional)", "text", {
+      var noteRow = this.makeRow("Note (optional)", "text", {
         field: "shot-note",
         placeholder: "e.g. 9 o'clock, ball back",
         maxLength: BagService.MAX_NOTE,
@@ -3222,19 +3234,22 @@ if ('serviceWorker' in navigator) {
         if (!label && !carryRaw && !totalRaw && !note) continue;
 
         var position = "Shot " + (shots.length + 1) + ": ";
-        if (!carryRaw) {
-          this.showEditorError(errorElement, position + "please enter a carry distance.");
-          return;
-        }
-        var carry = BagService.toDistance(carryRaw, BagService.MAX_CARRY);
-        if (carry === null) {
-          this.showEditorError(errorElement, position + "carry must be between " +
-            BagService.MIN_CARRY + " and " + BagService.MAX_CARRY + " " + this.UNIT + ".");
-          return;
+        var carry = null;
+        if (carryRaw) {
+          carry = BagService.toDistance(carryRaw, BagService.MAX_CARRY);
+          if (carry === null) {
+            this.showEditorError(errorElement, position + "carry must be between " +
+              BagService.MIN_CARRY + " and " + BagService.MAX_CARRY + " " + this.UNIT + ".");
+            return;
+          }
         }
 
         var total = null;
         if (totalRaw) {
+          if (carry === null) {
+            this.showEditorError(errorElement, position + "please enter a carry before a total.");
+            return;
+          }
           total = BagService.toDistance(totalRaw, BagService.MAX_TOTAL);
           if (total === null) {
             this.showEditorError(errorElement, position + "total must be between " +
@@ -3255,11 +3270,9 @@ if ('serviceWorker' in navigator) {
         });
       }
 
-      var noteValue = this.readField(card, "note");
       var club = {
         id: existingClub ? existingClub.id : BagService.newId(),
         name: name.slice(0, BagService.MAX_NAME),
-        note: noteValue ? noteValue.slice(0, BagService.MAX_NOTE) : null,
         shots: shots
       };
 
